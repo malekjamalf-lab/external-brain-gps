@@ -65,6 +65,31 @@
 :root .bellist .bl.fresh{background:rgba(127,227,255,.06)!important}
 :root .bellist .bl .rectag{order:2;flex:none;margin:0}
 </style>
+<style>
+/* live commentary under the map, and the car's working timer (founder, 2026-11-05). Every rule starts with :root to win over the design's later styles. */
+:root .lcomm{margin:10px 0 0;border:1px solid var(--line);border-radius:14px;background:rgba(3,10,20,.55);padding:10px 10px 8px;min-width:0}
+:root .lcomm .lch{display:flex;align-items:center;gap:8px;min-width:0}
+:root .lcomm .lch b{font:700 11px/1 var(--mono);letter-spacing:.1em;color:var(--cyan2,#7fe3ff);flex:none}
+:root .lcomm .lct{font-size:9.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+:root .lcomm .sp{flex:1}
+:root .lcomm .lcv{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--dim);font:600 9.5px/1 var(--mono);letter-spacing:.06em;padding:6px 8px;flex:none;position:relative}
+:root .lcomm .lcv svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+:root .lcomm .lcv svg path:first-child{fill:currentColor;stroke:none}
+:root .lcomm .lcv.on{color:var(--cyan2,#7fe3ff);border-color:rgba(127,227,255,.5)}
+:root .lcomm .lcl{display:grid;gap:6px;margin-top:8px;max-height:min(24vh,150px);overflow-y:auto;overscroll-behavior:contain}   /* a strip: the map keeps its room; older lines scroll */
+:root .lcomm .lcr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 8px;align-items:baseline;padding:7px 8px;border:1px solid var(--line);border-radius:9px;cursor:pointer;min-width:0;background:rgba(3,10,20,.35)}
+:root .lcomm .lcr .lck{font:700 8.5px/1 var(--mono);letter-spacing:.08em;color:var(--dim)}
+:root .lcomm .lcr .lcs{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:root .lcomm .lcr.open .lcs{white-space:normal}
+:root .lcomm .lcr time{font:9.5px/1 var(--mono);color:var(--dim)}
+:root .lcomm .lcr .lcd{grid-column:1/-1;font-size:12.5px;color:var(--dim);line-height:1.65;overflow-wrap:anywhere}
+:root .lcomm .lcr .lcroom{grid-column:1/-1;margin-top:4px;width:100%}
+:root .lcomm .lcr.k-start .lck{color:var(--cyan2,#7fe3ff)}
+:root .lcomm .lcr.k-done .lck{color:var(--ok,#46f0b0)}
+:root .lcomm .lcr.k-blocked .lck{color:var(--bad,#ff5468)}
+:root .lcomm .lcr.k-need_approval{border-color:rgba(255,138,61,.55)}
+:root .lcomm .lcr.k-need_approval .lck{color:#ff8a3d}
+</style>
 <meta name="theme-color" content="#030a14">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -1235,7 +1260,7 @@ function stateAt(run){
 function drawRun(run, now){
   const S = stateAt(run); run.S = S;
   const d = S.pts.map(ptsD).join(" "); run.aura.setAttribute("d", d); run.trail.setAttribute("d", d); run.core.setAttribute("d", d);
-  const vis = run.t >= 0; [run.dot, run.halo, run.tag].forEach(e => e.style.display = vis ? "" : "none");
+  const vis = run.t >= 0; [run.dot, run.halo, run.tag, run.wk].forEach(e => { if(e) e.style.display = vis ? "" : "none"; });
   if(!vis) return;
   const [x,y] = S.pos; const fail = S.cur && S.cur.step && S.cur.step.st === "fail" && run.done;
   run.dot.setAttribute("cx", x); run.dot.setAttribute("cy", y); run.halo.setAttribute("cx", x); run.halo.setAttribute("cy", y);
@@ -1247,6 +1272,7 @@ function drawRun(run, now){
   let tx = x + 12, ty = y - 26; if(tx + tw > V.x + V.w - 4) tx = x - tw - 12; if(ty < V.y + 4) ty = y + 10;
   run.tag.setAttribute("transform", `translate(${tx} ${ty})`); run.tagBg.setAttribute("stroke", fail ? css("--bad") : run.c);
   run.planEl.setAttribute("opacity", run.done && run.op.plan ? ".75" : "0");
+  if(typeof workTag === "function") workTag(run, tx, ty);
 }
 // node marks: failure X, wait, conflict
 function drawMarks(){
@@ -1678,7 +1704,7 @@ async function speak(el){
   if(req !== sayReq) return;   // cancelled or replaced while the voice list was loading
   const v = arVoice(); if(!v){ stopVoice(); return noVoice(el); }
   const u = new SpeechSynthesisUtterance([x.t].concat(x.lines).join(". ").replace(/([.؟!])\s*\./g, "$1"));
-  u.lang = "ar"; u.voice = v; u.onend = u.onerror = () => { if(req === sayReq) stopVoice(); };
+  u.lang = "ar"; u.voice = v; u.onend = u.onerror = () => { if(req === sayReq){ sayReq++; document.querySelectorAll(".i.speaking").forEach(x => x.classList.remove("speaking")); sayKey = null; } };   // ended by itself: nothing to cancel (the live commentary may be queued next)
   speechSynthesis.speak(u);
 }
 document.addEventListener("pointerdown", e => { const i = e.target.closest(".i"); if(!i) return; lpDone = false; clearTimeout(lpT); lpT = setTimeout(() => { lpDone = true; stopVoice(); showText(i); }, 550); }, true);
@@ -1973,6 +1999,7 @@ function drawMission(){
   else if(x) h += `<button class="dsec now glowcard bigcard voiced" id="mRec"><span class="lab">RECOMMENDED NOW ${sayBtn(planSay(x, "أرسل الرسالة الجاهزة إلى " + ((x.to || "claude") === "claude" ? "Claude" : "ChatGPT")))}</span><span class="ctitle" dir="auto">${esc(x.t)}</span>${AR(esc(x.nx || ""))}
     <span class="bigbtn as"><span class="rectag">RECOMMENDED</span>SEND TO ${(x.to || "claude") === "claude" ? "CLAUDE" : "CHATGPT"}<small>الرسالة جاهزة، تعدّلها إن أردت</small></span></button>
     <details class="dsec card vhide"><summary><span class="lab">THE STORY · ${esc(x.own)}</span><span class="ctitle">Why this waits for you</span>${AR("اقرأ القصة كاملة كما هي في الملف على main.")}<span class="more-hint">TAP TO READ ▾</span></summary>${AR('<span dir="auto">' + esc(x.ar) + "</span>")}${x.why ? AR("<b>لماذا يهم:</b> " + esc(x.why)) : ""}<p class="story" style="font-size:12px;color:var(--dim)">المصدر: <span class="mono" dir="ltr">${esc(x.ev)}</span></p></details>`;
+  else if(nx && nx.kind === "approval") h += `<button class="dsec now glowcard bigcard" id="mRec"><span class="lab">THE LAB WAITS FOR YOU ${I("comm")}</span><span class="ctitle" dir="auto">${esc(nx.label)}</span><span class="bigbtn as"><span class="rectag">RECOMMENDED</span>OPEN THE LAB ROOM<small>الموافقة هناك، في غرفة Claude</small></span></button>`;
   else if(nx && nx.kind === "paste") h += `<button class="dsec now glowcard bigcard" id="mRec"><span class="lab">RECOMMENDED NOW ${I("rec")}</span><span class="ctitle">${esc(nx.label)}</span><span class="bigbtn as"><span class="rectag">RECOMMENDED</span>PASTE THE REPLY<small>انسخ ردها من غرفتها أولًا</small></span></button>`;
   else h += `<div class="dsec good"><span class="lab">NOTHING WAITS FOR YOU ${I("rec")}</span>${AR(MODEL ? "لا يوجد قرار ينتظرك الآن على main. الغرف تعمل على بنودها." : "لم يُقرأ main بعد. أضف مفتاح القراءة في MORE ← SETTINGS.")}</div>`;
   h += W.map(y => `<button class="dsec card now voiced" data-pl="${PLAN.main.indexOf(y)}"><span class="lab"><span class="led L-wait"></span> WAITING · YOU ${sayBtn(planSay(y))}</span><span class="ctitle" dir="auto">${esc(y.t)}</span>${AR(esc(y.nx || "") + " المس لتقرأ القصة.")}</button>`).join("");
@@ -2236,7 +2263,7 @@ function liveOp(onMain, want){   // want: an earlier task in the log (opened fro
     log:evs.map(e => `LIVE: ${e.ts} | ${e.node} | ${e.action} | ${String(e.outcome).toUpperCase()}${e.error ? " | " + e.error : ""}`).join("\n")});
 }
 // a live mission that grew: the run continues from where it was to the new step, instead of starting over
-function extendRun(r, o){ const n = makeRun(o, 0); n.t = r.done ? r.total : Math.max(0, r.t); n.delay = r.delay; r.g.remove(); r.tag.remove(); return n; }
+function extendRun(r, o){ const n = makeRun(o, 0); n.t = r.done ? r.total : Math.max(0, r.t); n.delay = r.delay; r.g.remove(); r.tag.remove(); if(r.wk) r.wk.remove(); return n; }
 // a live mission drawn fresh starts at its last move, so the map shows where the Lab is now, not the whole walk again
 function liveAhead(r){ const tl = r.tl; let k = tl.length - 1; while(k > 0 && tl[k].type !== "dwell") k--; r.t = k > 0 && tl[k - 1].type === "move" ? tl[k - 1].t0 : (tl[k] ? tl[k].t0 : 0); r.delay = 0; return r; }
 document.querySelectorAll(".stat").forEach(b => b.onclick = () => { const k = b.dataset.k;
@@ -2367,7 +2394,7 @@ function markBell(nx){
   it.forEach(x => { if(!B.first[x.key]){ B.first[x.key] = now; dirty = true; } });
   if(dirty) bellSave(new Set(it.map(x => x.key)));
   const red = it.filter(x => x.red && !B.seen[x.key]).length, green = it.filter(x => !x.red && !B.seen[x.key]).length;
-  const c = red ? "red" : green ? "green" : nx ? "yellow" : "";
+  const appr = typeof lcPending === "function" && lcPending(), c = red ? "red" : appr ? "yellow" : green ? "green" : nx ? "yellow" : "";   // the Lab waiting for approval beats green
   b.classList.toggle("bell-red", c === "red"); b.classList.toggle("bell-green", c === "green"); b.classList.toggle("has-next", c === "yellow");
   let n = b.querySelector(".bn"); if(!n){ n = document.createElement("b"); n.className = "bn"; b.appendChild(n); }
   const num = c === "red" ? red : c === "green" ? green : 0; n.textContent = num > 99 ? "99+" : num ? String(num) : ""; n.hidden = !num;
@@ -2382,7 +2409,7 @@ function openBell(all){
   const sorted = it.map(x => Object.assign(x, {t:bellWhen(x, B), fresh:!B.seen[x.key]})).sort((a, b) => b.t - a.t);
   BELL_LIST = all ? sorted : sorted.filter((x, i) => i < 40 || x.fresh);   // every unseen item is shown, so none is marked seen unseen
   const more = sorted.length - BELL_LIST.length;
-  let h = nx ? `<button class="row bl" data-bl="next"><span class="g"><b>${nx.kind === "fail" ? "FIX FIRST" : nx.kind === "paste" ? "PASTE THE REPLY" : "WAITING · YOU"}</b><span dir="auto">${esc(nx.label)}</span></span><span class="rectag">RECOMMENDED</span></button>` : "";
+  let h = nx ? `<button class="row bl" data-bl="next"><span class="g"><b>${nx.kind === "fail" ? "FIX FIRST" : nx.kind === "approval" ? "NEED APPROVAL" : nx.kind === "paste" ? "PASTE THE REPLY" : "WAITING · YOU"}</b><span dir="auto">${esc(nx.label)}</span></span><span class="rectag">RECOMMENDED</span></button>` : "";
   h += BELL_LIST.map((x, i) => `<button class="row bl ${x.red ? "bl-red" : "bl-green"}${x.fresh ? " fresh" : ""}" data-bl="${i}"><span class="st">${x.st}</span><span class="g"><b dir="auto">${esc(x.room)} · ${esc(x.task)}</b><span dir="auto">${esc(String(x.what || "").slice(0, 140))}</span></span><span class="bt">${esc(bellTime(x, x.t))}${x.fresh ? "<i>NEW</i>" : ""}</span></button>`).join("");
   if(more > 0) h += `<button class="linkbtn" id="blMore">SHOW ${more} OLDER</button>`;
   if(!h) h = AR("لا شيء جديد. حين تنجح مهمة أو تفشل، تظهر هنا، والأحدث أولًا.");
@@ -2449,6 +2476,83 @@ bellReady = true; markNext(); bellPoll(true);
 function traceAsk(){ return "At the end of your reply, give your trace as one JSON block (eb-trace/v1)"; }
 function withTraceAsk(t){ const x = String(t || "").replace(/\s+$/, ""); return x.endsWith(traceAsk()) ? x : x + "\n\n" + traceAsk(); }
 function dropTraceAsk(t){ const x = String(t || "").replace(/\s+$/, ""); return x.endsWith(traceAsk()) ? x.slice(0, -traceAsk().length).replace(/\s+$/, "") : String(t || ""); }
+
+// ================= live commentary and the working timer (founder, 2026-11-05) =================
+// Events on gps/live may carry kind (start | done | step | heartbeat | blocked | need_approval), say_ar (one short sentence)
+// and detail_ar (what was done, why, obstacles, where it was stored, what comes next); the emitter checks them for secrets.
+// - LIVE COMMENTARY under the map: the current task's events, newest first; each line shows say_ar, tap for detail_ar.
+// - a speaker toggle (kept on the phone): when on, each new event's say_ar is spoken once (Arabic, lang ar), never on unchanged polls;
+//   what was already in the log when the app read it is history and is not read aloud.
+// - need_approval: the bell turns yellow (over green), it is spoken once (voice on), and a button opens the saved Claude room.
+// - the moving car's label gets "WORKING · n min" (since the last event); after 15 min with no event: "NO EVENT · n min" in yellow.
+//   A finished mission (RESULT / done) shows no timer. The bell does not light for this.
+// var, not const: markBell and the frame loop can call these functions before this part of the script has run.
+var LC_VOICE = "eb_gps_comm_voice_v1", lcOn = false, lcSpoken = new Set(), lcBase = false, lcOpenKey = "", lcSig = "";
+var LC_KIND = {start:"START", done:"DONE", step:"STEP", heartbeat:"HEARTBEAT", blocked:"BLOCKED", need_approval:"NEED APPROVAL"};
+function lcKind(e){ const k = String(e.kind || "").toLowerCase(); if(LC_KIND[k]) return k; const oc = String(e.outcome || "").toLowerCase();
+  return oc === "fail" || oc === "blocked" ? "blocked" : String(e.node || "").toUpperCase() === "RESULT" ? "done" : "step"; }
+function lcEvents(){ return (typeof LAB_LIVE === "object" && LAB_LIVE && LAB_LIVE.events) || []; }
+function lcCur(){ const ev = lcEvents(); if(!ev.length) return null; const task = ev[ev.length - 1].task_id; return {task, events:ev.filter(x => x.task_id === task)}; }
+function lcLastOf(task){ const ev = lcEvents().filter(x => x.task_id === task); return ev[ev.length - 1] || null; }
+// a task's approval request waits until that task's next event (work logged by another task does not end it); the newest one counts
+function lcPending(){ const last = {}; lcEvents().forEach(e => { last[e.task_id] = e; }); return Object.values(last).filter(e => lcKind(e) === "need_approval").pop() || null; }
+function lcKey(e){ return [e.ts, e.task_id, e.node, e.kind || "", e.action].join("|"); }
+function lcSay(e){ const s = String(e.say_ar || "").trim(); if(s) return s; const n = String(e.node || "").toUpperCase(); return (N[n] ? N[n].name : n) + " · " + String(e.action || ""); }
+function lcHM(ts){ const d = new Date(Date.parse(ts) || Date.now()), p = v => String(v).padStart(2, "0"); return p(d.getHours()) + ":" + p(d.getMinutes()); }
+function lcNoVoice(){ if(!lsGet("eb_gps_no_ar_voice_v1")){ lsSet("eb_gps_no_ar_voice_v1", "1"); toast("لا يوجد صوت عربي على هذا الهاتف · يظهر النص فقط"); } }
+async function lcSpeak(text){
+  if(!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return lcNoVoice();
+  if(!arVoice() && !(speechSynthesis.getVoices() || []).length) await new Promise(res => { const t = setTimeout(res, 800); try { speechSynthesis.addEventListener("voiceschanged", () => { clearTimeout(t); res(); }, {once:true}); } catch(e){} });
+  if(!lcOn) return; const v = arVoice(); if(!v) return lcNoVoice();
+  const u = new SpeechSynthesisUtterance(text); u.lang = "ar"; u.voice = v; speechSynthesis.speak(u);   // queued: events are read in order
+}
+// the saved Claude room (the Lab room), the same way SEND opens it
+function openLabRoom(){ const url = roomsGet().claude; if(!url) return toast("احفظ رابط غرفة Claude في MORE ← SAVED ROOMS");
+  const it = roomIntent(url, navigator.userAgent); if(it){ try { openIntent(it); return; } catch(e){} }
+  try { if(window.open(url, "_blank", "noopener")) return; } catch(e){}
+  const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); }
+function lcDraw(force){ const box = $("lcomm"); if(!box) return; const c = lcCur();
+  const pk = lcPending(), sig = (c ? c.task + "|" + c.events.length + "|" + lcKey(c.events[c.events.length - 1]) : "-") + "|" + (pk ? lcKey(pk) : "") + "|" + lcOn + "|" + lcOpenKey;
+  if(!force && sig === lcSig) return; lcSig = sig;
+  const head = `<div class="lch"><b>LIVE COMMENTARY</b><span class="lct mono">${c ? esc(c.task) : ""}</span><span class="sp"></span><button class="lcv${lcOn ? " on" : ""}" id="lcVoice" aria-pressed="${lcOn}"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/>${lcOn ? '<path d="M16 8.5a5 5 0 0 1 0 7M18.6 6a8.5 8.5 0 0 1 0 12"/>' : '<path d="M17 9l5 6M22 9l-5 6"/>'}</svg>${lcOn ? "VOICE ON" : "VOICE OFF"}</button>${I("comm")}</div>`;
+  if(!c) box.innerHTML = head + AR("لا مهمة حية الآن. حين يعمل المختبر يظهر هنا ما يفعله، والأحدث أولًا.");
+  else { const pend = lcPending();
+    const rows = c.events.slice(-12).reverse(); if(pend && !rows.includes(pend)) rows.unshift(pend);   // another task's open request stays on top
+    box.innerHTML = head + `<div class="lcl">` + rows.map(e => { const k = lcKey(e), kind = lcKind(e), open = k === lcOpenKey;
+      return `<div class="lcr k-${kind}${open ? " open" : ""}" data-lk="${esc(k)}" role="button" tabindex="0"><span class="lck">${LC_KIND[kind]}</span><span class="lcs" dir="auto">${e.task_id !== c.task ? esc(e.task_id) + " · " : ""}${esc(lcSay(e))}</span><time>${esc(lcHM(e.ts))}</time>` +
+        (open ? `<div class="lcd" dir="auto">${esc(String(e.detail_ar || "").trim() || "لا تفاصيل لهذا الحدث.")}</div>` : "") +
+        (pend === e ? `<button class="bigbtn lcroom" id="lcRoom"><span class="rectag">RECOMMENDED</span>OPEN THE LAB ROOM<small>المختبر ينتظر موافقتك هناك</small></button>` : "") + `</div>`; }).join("") + `</div>`; }
+  $("lcVoice").onclick = e => { if(e.target.closest(".i")) return; lcOn = !lcOn; lsSet(LC_VOICE, lcOn ? "1" : "0");
+    if(lcOn){ if(!("speechSynthesis" in window)) lcNoVoice(); else if(!arVoice() && (speechSynthesis.getVoices() || []).length) lcNoVoice(); } else { try { speechSynthesis.cancel(); } catch(x){} }
+    toast(lcOn ? "VOICE ON · يُقرأ كل حدث جديد مرة واحدة" : "VOICE OFF · نص فقط"); lcDraw(true); };
+  box.querySelectorAll(".lcr").forEach(r => r.onclick = e => { if(e.target.closest(".lcroom, .i")) return; lcOpenKey = lcOpenKey === r.dataset.lk ? "" : r.dataset.lk; lcDraw(true); });
+  const rb = $("lcRoom"); if(rb) rb.onclick = e => { e.stopPropagation(); openLabRoom(); };
+}
+// after each read of the live log: new events are spoken once (voice on), the strip and the bell follow
+function lcTick(){
+  if(liveRead){ const fresh = lcEvents().filter(e => !lcSpoken.has(lcKey(e)));   // the whole log (any task), so a task that resumes or ends between polls is still read once
+    if(lcBase && lcOn) fresh.forEach(e => lcSpeak(lcSay(e)));
+    fresh.forEach(e => lcSpoken.add(lcKey(e))); }
+  if(liveRead) lcBase = true;   // the first read of this visit is history: nothing in it is read aloud
+  lcDraw(); markNext(); }
+// "WORKING · n min" under the moving car's label (called by drawRun every frame; the text changes once a minute)
+function workTag(run, tx, ty){
+  const live = mode === "live" && run.op.live, e = live ? lcLastOf(run.op.task) : null, ended = !e || lcKind(e) === "done" || String(e.node || "").toUpperCase() === "RESULT";
+  if(!live || ended){ if(run.wk) run.wk.style.display = "none"; return; }
+  if(!run.wk){ run.wk = el("g", {class:"wk"}, gTop); run.wkBg = el("rect", {rx:5, height:14, fill:"#030a14", "stroke-width":"1"}, run.wk);
+    run.wkTx = el("text", {"font-family":"JetBrains Mono, monospace", "font-size":"7.5", y:10, x:5}, run.wk); }
+  const m = Math.max(0, Math.floor((Date.now() - (Date.parse(e.ts) || Date.now())) / 60000)), quiet = m >= 15, t = (quiet ? "NO EVENT · " : "WORKING · ") + m + " min";
+  if(run.wkTx.textContent !== t){ run.wkTx.textContent = t; run.wkBg.setAttribute("width", t.length * 4.6 + 10); run.wk.setAttribute("data-state", quiet ? "quiet" : "working"); }
+  run.wkBg.setAttribute("stroke", quiet ? "#ffc04d" : run.c); run.wkTx.setAttribute("fill", quiet ? "#ffc04d" : "#bfefff");
+  run.wk.setAttribute("transform", `translate(${tx} ${ty + 21})`); run.wk.style.display = "";
+}
+// need_approval waits for the founder: it is NEXT (after a failure), and it opens the Lab room
+{ const na = nextAction; nextAction = function(){ const r = na(); if(r && r.kind === "fail") return r; const a = lcPending();
+    return a ? {kind:"approval", label:"المختبر ينتظر موافقتك · " + lcSay(a), go:() => openLabRoom()} : r; }; }
+{ const lc = liveCheck; liveCheck = async function(){ await lc(); lcTick(); }; }
+{ const box = document.createElement("section"); box.className = "lcomm"; box.id = "lcomm"; box.setAttribute("aria-label", "Live commentary"); $("pgHome").appendChild(box); }
+INFO.comm = ["LIVE COMMENTARY",["ما هو: تعليق حي على عمل المختبر الآن: بداية كل مهمة، ونبضة كل دقيقتين في العمل الطويل، ونهايتها، والأحدث أولًا.","المس سطرًا لترى التفاصيل: ما عُمل، ولماذا، والعوائق، وأين حُفظ، وما التالي.","زر VOICE يشغّل الصوت العربي: يُقرأ كل حدث جديد مرة واحدة. يبقى اختيارك على هاتفك.","حين يحتاج المختبر موافقتك يصير الجرس أصفر، ويظهر زر OPEN THE LAB ROOM."]];
+lcOn = lsGet(LC_VOICE) === "1"; lcDraw(true);
 </script>
 
 </body>
