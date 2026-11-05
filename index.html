@@ -4,6 +4,45 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}html,body{height:100%}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>
+/* every rule starts with :root so it wins over the design's later finishing styles (same !important, higher specificity)
+   EB-GPS-CLEAN-VOICE-01 (founder, 2026-11-05): RECOMMENDED = a full yellow frame and a yellow glow, everywhere, instead of the blue
+   glow; nothing else gets a yellow frame or glow; still one main glow at a time (the app decides which). Speakers replace (i).
+   The thread shows one line per message until tapped. */
+:root{--rec:#ffc04d;--recA:rgba(255,192,77,.62);--recB:rgba(255,192,77,.22)}
+@keyframes glowrec{0%,100%{box-shadow:0 0 0 0 rgba(255,192,77,0),0 0 10px rgba(255,192,77,.40)}50%{box-shadow:0 0 0 4px rgba(255,192,77,.20),0 0 24px rgba(255,192,77,.66)}}
+/* recommended buttons: the app's glowing next action, any button that carries the RECOMMENDED tag, and the send button for the recommended room */
+:root .glow,:root .sendbtn.glow.gpt,:root .sendbtn.glow.cl,:root button:has(> .rectag),:root .bigbtn:has(> .rectag),:root .dsec.bad .bigbtn:has(> .rectag){
+  border:1.5px solid var(--rec)!important;border-color:var(--rec)!important;background:rgba(255,192,77,.10)!important;animation:glowrec 1.6s ease-in-out infinite!important}
+:root .glow,:root button:has(> .rectag),:root .bigbtn:has(> .rectag){color:var(--rec)!important}
+:root .rectag,:root .bigbtn .rectag{color:var(--rec)!important}
+/* recommended cards (the one glowing card), the next plan row; a red error card stays red, its recommended button inside is yellow */
+:root .glowcard:not(.bad){border:1.5px solid var(--rec)!important;border-color:var(--rec)!important;box-shadow:0 0 0 1px var(--recA),0 0 26px var(--recB)!important}
+:root .prow.glowrow{box-shadow:inset 0 0 0 1.5px var(--rec),0 0 18px var(--recB)!important;background:linear-gradient(90deg,rgba(255,192,77,.12),rgba(255,192,77,.02))!important}
+/* the bell keeps its yellow when something waits (it was the model for this) */
+:root #bAlerts.has-next{border-color:var(--rec)!important;box-shadow:0 0 0 1px var(--recA),0 0 14px var(--recB)!important}
+
+/* (i) becomes a small speaker: tap reads the explanation aloud in Arabic, tap again stops; long-press shows the text */
+:root .i{font-size:0!important;color:var(--cyan2,#7fe3ff)}
+:root .i::before{content:"";display:block;width:11px;height:11px;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 9h4l5-4v14l-5-4H4z'/%3E%3Cpath d='M16 8.5a5 5 0 0 1 0 7M18.6 6a8.5 8.5 0 0 1 0 12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 9h4l5-4v14l-5-4H4z'/%3E%3Cpath d='M16 8.5a5 5 0 0 1 0 7M18.6 6a8.5 8.5 0 0 1 0 12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat}
+:root .i.speaking{color:var(--rec)!important;border-color:var(--rec)!important;box-shadow:0 0 8px var(--recA)}
+:root .i.say{vertical-align:middle;margin-inline-start:6px;cursor:pointer}
+/* explanations go by voice: the long story text of these cards is hidden (titles and buttons stay) */
+:root .voiced > p.story,:root .voiced > .story,:root .vhide{display:none!important}
+:root .voiced > p.story[style]{display:block!important}   /* the short source line (المصدر) stays */
+
+/* TALK: one line per message (direction and the first words); tap opens the full text, tap again closes */
+:root .msg:not(.open){display:flex;align-items:baseline;gap:8px;cursor:pointer;padding-top:7px;padding-bottom:7px}
+:root .msg:not(.open) .who{flex:none;margin:0}
+:root .msg:not(.open) .who time{display:none}
+:root .msg:not(.open) .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+:root .msg:not(.open) .att{display:none}
+:root .msg.open{cursor:pointer}
+:root label.nlab{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--dim);margin:8px 0 4px}
+:root #tRec.none{opacity:.62;animation:none!important;cursor:default}   /* nothing new to send: the button says so */
+</style>
 <meta name="theme-color" content="#030a14">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -1593,7 +1632,51 @@ function openInfo(k){ const d = INFO[k]; if(!d) return; const body = typeof d[1]
   $("ipT").textContent = d[0]; $("ipB").innerHTML = body.map(p => `<p>${esc(p)}</p>`).join(""); $("ipScrim").hidden = false; $("ip").hidden = false; }
 function closeInfo(){ $("ipScrim").hidden = true; $("ip").hidden = true; }
 $("ipScrim").onclick = closeInfo; $("ipX").onclick = closeInfo;
-document.addEventListener("click", e => { const i = e.target.closest(".i"); if(i){ e.stopPropagation(); e.preventDefault(); openInfo(i.dataset.i); } }, true);
+// (i) is a speaker: tap reads the explanation aloud in Arabic (tap again stops); long-press shows the text, for when sound is not possible
+const SAY = {}; let sayKey = null, sayReq = 0, lpT = null, lpDone = false;
+// the speaker's key comes from its text, so a redrawn card (a live event redraws the visible page) keeps the same speaker: the next tap still stops it
+const sayId = t => { let h = 5381; for(let i = 0; i < t.length; i++) h = (h * 33 + t.charCodeAt(i)) >>> 0; return "v" + h.toString(36) + t.length.toString(36); };
+function sayBtn(lines){ const L = (lines || []).filter(Boolean).slice(0, 6), id = sayId(L.join("\n")); SAY[id] = L; return `<span class="i say${sayKey === "s:" + id ? " speaking" : ""}" data-say="${id}" role="button" aria-label="اسمع الشرح">i</span>`; }
+const keyOf = el => el.dataset.say ? "s:" + el.dataset.say : "i:" + el.dataset.i;
+// a redraw also replaces plain (i) speakers: the one that is speaking is lit again
+try { new MutationObserver(() => { if(sayKey) document.querySelectorAll(".i:not(.speaking)").forEach(e => { if(keyOf(e) === sayKey) e.classList.add("speaking"); }); }).observe(document.body, {childList:true, subtree:true}); } catch(e){}
+function infoLines(el){ if(el.dataset.say) return {t:"الشرح", lines:SAY[el.dataset.say] || []};
+  const d = INFO[el.dataset.i]; if(!d) return null; return {t:d[0], lines:typeof d[1] === "function" ? d[1]() : d[1]}; }
+function showText(el){ const x = infoLines(el); if(!x) return; $("ipT").textContent = x.t; $("ipB").innerHTML = x.lines.map(p => `<p>${esc(p)}</p>`).join(""); $("ipScrim").hidden = false; $("ip").hidden = false; }
+const arVoice = () => { try { return (speechSynthesis.getVoices() || []).find(v => /^ar([-_]|$)/i.test(v.lang || "")) || null; } catch(e){ return null; } };
+function noVoice(el){ showText(el); if(!lsGet("eb_gps_no_ar_voice_v1")){ lsSet("eb_gps_no_ar_voice_v1", "1"); toast("لا يوجد صوت عربي على هذا الهاتف · يظهر النص بدل الصوت"); } }
+function stopVoice(){ sayReq++; try { speechSynthesis.cancel(); } catch(e){} document.querySelectorAll(".i.speaking").forEach(x => x.classList.remove("speaking")); sayKey = null; }   // also cancels a request still waiting for the voice list
+async function speak(el){
+  const key = keyOf(el);
+  if(sayKey === key) return stopVoice();   // tap again: stop
+  stopVoice(); const x = infoLines(el); if(!x) return;
+  if(!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return noVoice(el);
+  const req = sayReq; sayKey = key; el.classList.add("speaking");   // pending from now: a second tap, another speaker or a long-press cancels it
+  if(!arVoice() && !(speechSynthesis.getVoices() || []).length) await new Promise(res => { const t = setTimeout(res, 800); try { speechSynthesis.addEventListener("voiceschanged", () => { clearTimeout(t); res(); }, {once:true}); } catch(e){} });
+  if(req !== sayReq) return;   // cancelled or replaced while the voice list was loading
+  const v = arVoice(); if(!v){ stopVoice(); return noVoice(el); }
+  const u = new SpeechSynthesisUtterance([x.t].concat(x.lines).join(". ").replace(/([.؟!])\s*\./g, "$1"));
+  u.lang = "ar"; u.voice = v; u.onend = u.onerror = () => { if(req === sayReq) stopVoice(); };
+  speechSynthesis.speak(u);
+}
+document.addEventListener("pointerdown", e => { const i = e.target.closest(".i"); if(!i) return; lpDone = false; clearTimeout(lpT); lpT = setTimeout(() => { lpDone = true; stopVoice(); showText(i); }, 550); }, true);
+["pointerup", "pointercancel"].forEach(t => document.addEventListener(t, () => clearTimeout(lpT), true));
+document.addEventListener("contextmenu", e => { if(e.target.closest(".i")) e.preventDefault(); }, true);
+document.addEventListener("click", e => { const i = e.target.closest(".i"); if(!i) return; e.stopPropagation(); e.preventDefault(); if(lpDone){ lpDone = false; return; } speak(i); }, true);
+// 4-6 short Arabic sentences from the item's own data: what happened, the recommendation, and why
+const sents = t => String(t || "").replace(/\s+/g, " ").split(/(?<=[.!؟?])\s+/).map(x => x.trim()).filter(Boolean);
+const dot = t => (t = String(t || "").trim()) && (/[.!؟?]$/.test(t) ? t : t + ".");
+const OWN_AR = {"YOU":"أنت", "LAB":"المختبر", "ROOM":"غرفة المهندس الذكي", "LAB + YOU":"المختبر وأنت"};
+function fill(out){ out = out.filter(Boolean).map(dot); if(out.length < 4) out.push("الزر الموصى به أصفر، والمسه لتكمل."); if(out.length < 4) out.push("اضغط مطولًا على السماعة لترى النص."); return out.slice(0, 6); }
+function planSay(x, rec){ const out = ["البند: " + x.t, ...sents(x.ar).slice(0, 2)];
+  if(x.s === "done") out.push("نجح، والدليل على main"); else if(rec) out.push("التوصية: " + rec); else if(x.nx) out.push("الخطوة التالية: " + x.nx);
+  if(x.why) out.push("لماذا: " + x.why); if(x.own && x.s !== "done") out.push("المسؤول: " + (OWN_AR[x.own] || x.own));
+  return fill(out); }
+function failSay(op, f, rec, recovered){ const where = f && N[f.n] ? N[f.n].name : "", room = op.room === "claude" ? "غرفة Claude" : "غرفة ChatGPT";
+  const out = [room + " توقفت" + (where ? " عند " + where : "") + " في المهمة " + op.chip, "ما حدث: " + (f ? f.a : op.whyShort || ""), f && f.err ? "الخطأ: " + f.err : ""];
+  if(rec) out.push("التوصية: " + rec); else if(recovered) out.push("أنقذت الغرفة المهمة بنفسها، والدرس موجود، فلا يلزمك شيء");
+  out.push(op.rightShort ? "لماذا: " + op.rightShort : (op.proven || []).length ? "الطريق المثبت: " + op.proven[op.provenDone || 0] : "");
+  return fill(out); }
 document.addEventListener("keydown", e => { if(e.key === "Escape"){ if(!$("ip").hidden) closeInfo(); else if(!$("sheet").hidden) closeSheet(); else closeDoor(); } });
 
 // ================= the one SEND (ChatGPT or Claude), the waiting PASTE =================
@@ -1784,7 +1867,7 @@ function fixBlock(op, f, oi){
   const main = recovered ? (known ? null : {k:"lesson", t:"ADD TO LESSONS", s:"سطر درس واحد إلى Claude"}) : !f.err ? {k:"ask", t:"ASK CLAUDE FIRST", s:"السبب غير واضح: شخّصه أولًا"} : {k:"fix", t:"SEND FIX TO " + room, s:"يُنسخ أمر التصحيح وتُفتح غرفة " + (room === "CLAUDE" ? "Claude" : "ChatGPT")};
   const others = [["fix","SEND FIX TO " + room,"fix"],["cont","CONTINUE","cont"],["ask","ASK CLAUDE FIRST","askfirst"],["lesson","ADD TO LESSONS","lesson"]]
     .filter(([k]) => !main || k !== main.k).filter(([k]) => !(recovered && (k === "fix" || k === "cont"))).filter(([k]) => !(known && k === "lesson"));
-  return `<div class="dsec bad${main ? " glowcard" : ""}"><span class="lab">${recovered ? "STOPPED HERE · RECOVERED" : "STOPPED HERE"} ${I("wrong")}</span>
+  return `<div class="dsec bad voiced${main ? " glowcard" : ""}"><span class="lab">${recovered ? "STOPPED HERE · RECOVERED" : "STOPPED HERE"} ${sayBtn(failSay(op, f, main ? main.t : "", recovered))}</span>
       ${AR("<b>ما حدث:</b> " + esc(op.whyShort || f.a) )}
       ${proven.length ? AR("<b>الصحيح:</b> " + esc(op.rightShort || proven[op.provenDone || 0] || "")) : ""}
       ${main ? `<button class="bigbtn" data-act="${main.k}" data-op="${oi}"><span class="rectag">RECOMMENDED</span>${main.t}<small>${main.s}</small>${I(main.k === "fix" ? "fix" : main.k === "ask" ? "askfirst" : "lesson","c")}</button>` : AR('<span style="color:var(--ok)">أنقذت الغرفة المهمة بنفسها، والدرس موجود. لا يلزمك شيء.</span>')}
@@ -1844,8 +1927,8 @@ function drawPlan(){
 function planItem(x){
   const nx = nextAction(), isNext = nx && nx.item === x;
   const act = x.send || x.s === "new" ? {t:"SEND TO " + ((x.to || "claude") === "claude" ? "CLAUDE" : "CHATGPT"), s:x.s === "new" ? "يُرسل إلى Claude ليضيفه إلى الخطة" : "الرسالة جاهزة، تعدّلها إن أردت"} : null;
-  sheet(x.t, x.own, `<div class="dsec ${x.s === "done" ? "good" : x.s === "blocked" ? "bad" : (x.s === "wait" || x.s === "new") ? "now" : ""}${isNext ? " glowcard" : ""}">
-      <span class="lab"><span class="led L-${x.s}"></span> ${ST_LBL[x.s]} ${I("lights")}</span>${AR(esc(x.ar))}${x.why ? AR("<b>لماذا يهم:</b> " + esc(x.why)) : ""}
+  sheet(x.t, x.own, `<div class="dsec ${x.s === "done" ? "good" : x.s === "blocked" ? "bad" : (x.s === "wait" || x.s === "new") ? "now" : ""}${isNext ? " glowcard" : ""} voiced">
+      <span class="lab"><span class="led L-${x.s}"></span> ${ST_LBL[x.s]} ${sayBtn(planSay(x))}</span>${AR(esc(x.ar))}${x.why ? AR("<b>لماذا يهم:</b> " + esc(x.why)) : ""}
       ${x.s === "done" ? AR('<span style="color:var(--ok)">نجح. الدليل:</span> <span class="mono" style="font-size:11px">' + esc(x.ev) + "</span>") : AR("<b>الخطوة التالية:</b> " + esc(x.nx))}
       ${act ? `<button class="bigbtn${isNext || x.s === "new" ? "" : " calm"}" id="piSend">${isNext || x.s === "new" ? '<span class="rectag">RECOMMENDED</span>' : ""}${act.t}<small>${act.s}</small>${I("send","c")}</button>` : ""}
       ${x.url ? `<a class="linkbtn" href="${esc(x.url)}" target="_blank" rel="noopener">↗ OPEN ON GITHUB</a>` : ""}<p class="story" style="font-size:12px;color:var(--dim)">المصدر: <span class="mono" dir="ltr">${esc(x.ev || "")}</span></p></div>`);
@@ -1858,13 +1941,13 @@ $("addGo").onclick = () => { const v = $("addTxt").value.trim(); if(!v) return t
 function drawMission(){
   const nx = nextAction(), x = nx && nx.item, W = PLAN.main.filter(y => y.s === "wait" && y !== x), S = MODEL ? MODEL.state : null;
   let h = "";
-  if(nx && nx.kind === "fail") h += `<button class="dsec bad glowcard bigcard" id="mRec"><span class="lab">STOPPED · FIX FIRST ${I("rec")}</span><span class="ctitle">${esc(nx.op.chip)}</span>${AR(esc(nx.op.whyShort || nx.label))}<span class="bigbtn as"><span class="rectag">RECOMMENDED</span>OPEN THE RED BUILDING<small>هناك أمر التصحيح جاهز</small></span></button>`;
-  else if(x) h += `<button class="dsec now glowcard bigcard" id="mRec"><span class="lab">RECOMMENDED NOW ${I("rec")}</span><span class="ctitle" dir="auto">${esc(x.t)}</span>${AR(esc(x.nx || ""))}
+  if(nx && nx.kind === "fail") h += `<button class="dsec bad glowcard bigcard voiced" id="mRec"><span class="lab">STOPPED · FIX FIRST ${sayBtn(failSay(nx.op, nx.op.steps.find(s => s.st === "fail"), "OPEN THE RED BUILDING", true))}</span><span class="ctitle">${esc(nx.op.chip)}</span>${AR(esc(nx.op.whyShort || nx.label))}<span class="bigbtn as"><span class="rectag">RECOMMENDED</span>OPEN THE RED BUILDING<small>هناك أمر التصحيح جاهز</small></span></button>`;
+  else if(x) h += `<button class="dsec now glowcard bigcard voiced" id="mRec"><span class="lab">RECOMMENDED NOW ${sayBtn(planSay(x, "أرسل الرسالة الجاهزة إلى " + ((x.to || "claude") === "claude" ? "Claude" : "ChatGPT")))}</span><span class="ctitle" dir="auto">${esc(x.t)}</span>${AR(esc(x.nx || ""))}
     <span class="bigbtn as"><span class="rectag">RECOMMENDED</span>SEND TO ${(x.to || "claude") === "claude" ? "CLAUDE" : "CHATGPT"}<small>الرسالة جاهزة، تعدّلها إن أردت</small></span></button>
-    <details class="dsec card"><summary><span class="lab">THE STORY · ${esc(x.own)}</span><span class="ctitle">Why this waits for you</span>${AR("اقرأ القصة كاملة كما هي في الملف على main.")}<span class="more-hint">TAP TO READ ▾</span></summary>${AR('<span dir="auto">' + esc(x.ar) + "</span>")}${x.why ? AR("<b>لماذا يهم:</b> " + esc(x.why)) : ""}<p class="story" style="font-size:12px;color:var(--dim)">المصدر: <span class="mono" dir="ltr">${esc(x.ev)}</span></p></details>`;
+    <details class="dsec card vhide"><summary><span class="lab">THE STORY · ${esc(x.own)}</span><span class="ctitle">Why this waits for you</span>${AR("اقرأ القصة كاملة كما هي في الملف على main.")}<span class="more-hint">TAP TO READ ▾</span></summary>${AR('<span dir="auto">' + esc(x.ar) + "</span>")}${x.why ? AR("<b>لماذا يهم:</b> " + esc(x.why)) : ""}<p class="story" style="font-size:12px;color:var(--dim)">المصدر: <span class="mono" dir="ltr">${esc(x.ev)}</span></p></details>`;
   else if(nx && nx.kind === "paste") h += `<button class="dsec now glowcard bigcard" id="mRec"><span class="lab">RECOMMENDED NOW ${I("rec")}</span><span class="ctitle">${esc(nx.label)}</span><span class="bigbtn as"><span class="rectag">RECOMMENDED</span>PASTE THE REPLY<small>انسخ ردها من غرفتها أولًا</small></span></button>`;
   else h += `<div class="dsec good"><span class="lab">NOTHING WAITS FOR YOU ${I("rec")}</span>${AR(MODEL ? "لا يوجد قرار ينتظرك الآن على main. الغرف تعمل على بنودها." : "لم يُقرأ main بعد. أضف مفتاح القراءة في MORE ← SETTINGS.")}</div>`;
-  h += W.map(y => `<button class="dsec card now" data-pl="${PLAN.main.indexOf(y)}"><span class="lab"><span class="led L-wait"></span> WAITING · YOU ${I("opts")}</span><span class="ctitle" dir="auto">${esc(y.t)}</span>${AR(esc(y.nx || "") + " المس لتقرأ القصة.")}</button>`).join("");
+  h += W.map(y => `<button class="dsec card now voiced" data-pl="${PLAN.main.indexOf(y)}"><span class="lab"><span class="led L-wait"></span> WAITING · YOU ${sayBtn(planSay(y))}</span><span class="ctitle" dir="auto">${esc(y.t)}</span>${AR(esc(y.nx || "") + " المس لتقرأ القصة.")}</button>`).join("");
   if(S && S.limits.length) h += `<details class="dsec card bad"><summary><span class="lab">BLOCKED · KNOWN LIMITS ${I("blk")}</span><span class="ctitle">${S.limits.length} platform limits</span><span class="more-hint">TAP FOR DETAILS ▾</span></summary>${S.limits.map(t => AR('<span dir="auto">' + esc(t) + "</span>")).join("")}<p class="story" style="font-size:12px;color:var(--dim)">المصدر: brain/STATE.md</p></details>`;
   $("missionBody").innerHTML = h;
   const r = $("mRec"); if(r) r.onclick = e => { if(e.target.closest(".i")) return; if(nx.kind === "wait" || nx.kind === "prog") send(x.send || "", {title:"Send · " + x.t, topic:x.t, rec:x.to || "claude", about:x.ar}); else nx.go(); };
@@ -1885,16 +1968,16 @@ function drawTalk(){
     $("talkBody").querySelectorAll("[data-t]").forEach(b => b.onclick = e => { if(e.target.closest(".i")) return; thread = THREADS[+b.dataset.t]; drawTalk(); });
     $("tNew").onclick = () => { thread = threadFor("New topic " + nowHM()); drawTalk(); };
     return; }
-  const t = thread, last = t.msgs[t.msgs.length-1];
+  const t = thread, last = [...t.msgs].reverse().find(m => !(m.from === "you" && m.to === "you"));   // the latest room message or send, not a saved note
   const rec = last && last.from === "gpt" ? "claude" : last && last.from === "claude" ? "gpt" : "claude", other = rec === "gpt" ? "claude" : "gpt";
   const NAME = {gpt:"CHATGPT",claude:"CLAUDE"};
   const why = last && last.from === "gpt" ? "آخر رسالة من ChatGPT: خذ رأي Claude فيها." : last && last.from === "claude" && last.to === "gpt" ? "عند Claude رد جاهز لـ ChatGPT: أرسله إليها." : last && last.from === "claude" ? "Claude أعطى رأيه: أرسله مع ملاحظتك إلى ChatGPT." : "اكتب سؤالك وأرسله.";
   $("talkBody").innerHTML = `<div class="ph" style="margin-bottom:8px"><b style="font-family:var(--display);font-size:16px">${esc(t.title)}</b>${I("th_"+t.id)}</div><div class="msgs">` +
     t.msgs.map(m => `<div class="msg ${m.from}${m.draft ? " draft" : ""}"><div class="who"><span class="dir">${NM[m.from]} → ${NM[m.to]}</span>${m.draft ? " · READY REPLY" : ""}<time>${esc(m.at)}</time></div><p class="tx${m.en ? " en" : ""}" dir="auto">${esc(m.tx)}</p>${m.att && OPS.some(o => o.id === m.opId) ? `<button class="att" data-opid="${esc(m.opId)}">◆ ${esc(m.att)}</button>` : m.att ? `<span class="att">◆ ${esc(m.att)}</span>` : ""}</div>`).join("") + `</div>
     <div class="dsec now glowcard" style="margin-top:10px"><span class="lab">NEXT ${I("talk")}</span>${AR(why)}
-      <textarea id="tNote" placeholder="Your note (optional)…" aria-label="Your note"></textarea>
-      <button class="bigbtn" id="tRec"><span class="rectag">RECOMMENDED</span>SEND TO ${NAME[rec]}<small>the thread + your note</small>${I(rec === "gpt" ? "sendgpt" : "sendcl","c")}</button>
-      <details class="other"><summary>▸ Other options</summary><div class="btns" style="margin-top:8px"><button class="btn2" id="tOther">SEND TO ${NAME[other]}${I(other === "gpt" ? "sendgpt" : "sendcl","c")}</button><button class="btn2" id="tAdd">SAVE NOTE ONLY${I("note","c")}</button></div></details></div>`;
+      <label class="nlab" for="tNote">Founder's note · optional (اختياري)</label><textarea id="tNote" placeholder="Founder's note · optional (اختياري)" aria-label="Founder's note · optional (اختياري)"></textarea>
+      <button class="bigbtn" id="tRec"><span class="rectag">RECOMMENDED</span><span class="tl">SEND TO ${NAME[rec]}</span><small>the latest reply + your note</small>${I(rec === "gpt" ? "sendgpt" : "sendcl","c")}</button>
+      <details class="other"><summary>▸ Other options</summary><div class="btns" style="margin-top:8px"><button class="btn2" id="tOther">SEND TO ${NAME[other]}${I(other === "gpt" ? "sendgpt" : "sendcl","c")}</button><button class="btn2" id="tAll">SEND THE WHOLE THREAD TO ${NAME[rec]}${I("sendall","c")}</button><button class="btn2" id="tAdd">SAVE NOTE ONLY${I("note","c")}</button></div></details></div>`;
   $("talkBody").querySelectorAll("[data-opid]").forEach(b => b.onclick = () => { go("home"); startReplay(OPS.findIndex(o => o.id === b.dataset.opid)); userPaused = false; playIcon(); });
   const keepNote = () => { const v = $("tNote").value.trim(); if(v){ t.msgs.push({from:"you",to:"you",at:nowHM(),tx:v}); saveLocal(); } return v; };
   $("tAdd").onclick = () => { if(keepNote()) drawTalk(); };
@@ -1907,10 +1990,30 @@ function drawTalk(){
     if(old) old.tx.split("\n").forEach(l => { const x = l.replace(/^[A-Z]+ -> [A-Z]+: (?=GPS THREAD ·)/, "").trim();
       if(!x || isPackText(x) || /^MY NOTE:/.test(x) || /^[A-Z]+ -> [A-Z]+: sent the thread to /.test(x) || seen.has(x)) return; seen.add(x); early.push(x); });
     return `GPS THREAD · ${t.title}\n` + (early.length ? "EARLIER (kept from an older copy of this thread):\n" + early.join("\n") + "\n" : "") + lines.join("\n") + (note ? `\n\nMY NOTE: ${note.tx}` : ""); };
-  $("tRec").onclick = () => { keepNote(); send(pack(rec), {title:"Send to " + NAME[rec], thread:t, rec}); };
-  $("tOther").onclick = () => { keepNote(); send(pack(other), {title:"Send to " + NAME[other], thread:t, rec:other}); };
+  // only what is new: the latest message from the other room since your last send (a ready reply addressed to this room counts), and your note
+  const lastSend = () => { for(let i = t.msgs.length - 1; i >= 0; i--){ const m = t.msgs[i]; if(m.from === "you" && m.to !== "you") return i; } return -1; };
+  const short = (to, typed) => { const from = lastSend() + 1, src = to === "gpt" ? "claude" : "gpt", after = t.msgs.slice(from);
+    const r = [...after].reverse().find(m => m.from === src && (m.to === "you" || m.to === to) && !m.pack && !isPackText(m.tx));
+    const note = typed || ([...after].reverse().find(m => m.from === "you" && m.to === "you") || {}).tx || "";
+    if(!r && !note) return null;
+    if(r && r.draft && !note && t.msgs[t.msgs.length - 1] === r) return r.tx;   // a ready reply, as it is
+    return `GPS THREAD · ${t.title}\n` + (r ? `${NM[r.from]} -> ${NM[r.to]}: ${r.tx}` : "") + (note ? `${r ? "\n\n" : "\n"}MY NOTE: ${note}` : ""); };
+  const tl = $("tRec").querySelector(".tl"), ts = $("tRec").querySelector("small"), rt = $("tRec").querySelector(".rectag");
+  const upd = () => { const none = short(rec, $("tNote").value.trim()) === null; $("tRec").classList.toggle("none", none);
+    if(none) rt.remove(); else if(!rt.isConnected) $("tRec").prepend(rt);   // nothing to send is not a recommendation
+    tl.textContent = none ? "NOTHING NEW TO SEND" : "SEND TO " + NAME[rec]; ts.textContent = none ? "اكتب ملاحظة، أو انتظر ردًا جديدًا" : "the latest reply + your note"; };
+  $("tNote").addEventListener("input", upd); upd();
+  const sendShort = to => { const typed = $("tNote").value.trim(), x = short(to, typed); if(x === null){ upd(); return toast("لا جديد لإرساله · اكتب ملاحظة، أو أرسل الخيط كله من Other options"); }
+    keepNote(); send(x, {title:"Send to " + NAME[to], thread:t, rec:to}); };
+  $("tRec").onclick = () => sendShort(rec);
+  $("tAll").onclick = () => { keepNote(); send(pack(rec), {title:"Send the whole thread to " + NAME[rec], thread:t, rec}); };
+  $("tOther").onclick = () => sendShort(other);
+  $("talkBody").querySelectorAll(".msg").forEach(m => m.onclick = e => { if(e.target.closest(".att, .i, a, button")) return; m.classList.toggle("open"); });   // one line until tapped
 }
 $("talkBack").onclick = () => { thread = null; drawTalk(); };
+INFO.sendgpt = ["SEND TO CHATGPT",["يرسل إلى غرفة المهندس الذكي في ChatGPT ملاحظتك، وآخر رد من Claude منذ آخر إرسال إن وُجد. لا يرسل الخيط كله.","الخيط كله من بدايته في Other options."]];
+INFO.sendcl = ["SEND TO CLAUDE",["يرسل إلى غرفة Claude ملاحظتك، وآخر رد من ChatGPT منذ آخر إرسال إن وُجد. لا يرسل الخيط كله.","الخيط كله من بدايته في Other options."]];
+INFO.sendall = ["SEND THE WHOLE THREAD",["يرسل الخيط كله من بدايته مع ملاحظتك، حين تحتاج الغرفة القصة كاملة.","كل رسالة مرة واحدة، دون تكرار ما أُرسل من قبل."]];
 
 // ================= MORE =================
 function drawMore(){
