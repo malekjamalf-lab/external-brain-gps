@@ -43,6 +43,28 @@
 :root label.nlab{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--dim);margin:8px 0 4px}
 :root #tRec.none{opacity:.62;animation:none!important;cursor:default}   /* nothing new to send: the button says so */
 </style>
+<style>
+/* EB-GPS-BELL-01 (founder, 2026-11-05): the bell's colors. RED + number: unseen failures. GREEN + number: finished since the list was last opened.
+   YELLOW (has-next, from clean_voice.css): something waits for you. No color: nothing new. Every rule starts with :root to win over the design's later styles. */
+:root #bAlerts.bell-red{border-color:var(--bad,#ff5468)!important;box-shadow:0 0 0 1px rgba(255,84,104,.55),0 0 14px rgba(255,84,104,.35)!important;animation:none!important}
+:root #bAlerts.bell-red svg{stroke:#ff8a96!important}
+:root #bAlerts.bell-green{border-color:var(--ok,#46f0b0)!important;box-shadow:0 0 0 1px rgba(70,240,176,.45),0 0 12px rgba(70,240,176,.25)!important;animation:none!important}
+:root #bAlerts.bell-green svg{stroke:var(--ok,#46f0b0)!important}
+:root #bAlerts .bn{position:absolute;top:-6px;left:-6px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;font:700 10px/16px var(--mono);text-align:center;color:#04101c;background:var(--bad,#ff5468);z-index:3;pointer-events:none}
+:root #bAlerts.bell-green .bn{background:var(--ok,#46f0b0)}
+:root #bAlerts .bn[hidden]{display:none!important}
+/* the list: newest first; red lines open the door with the fix, green lines the mission replay */
+:root .bellist{display:grid;gap:7px}
+:root .bellist .bl .st{flex:none;font:700 9.5px/1 var(--mono);letter-spacing:.08em;width:52px}
+:root .bellist .bl-red{border-color:rgba(255,84,104,.42)!important}
+:root .bellist .bl-red .st{color:var(--bad,#ff5468)}
+:root .bellist .bl-green{border-color:rgba(70,240,176,.32)!important}
+:root .bellist .bl-green .st{color:var(--ok,#46f0b0)}
+:root .bellist .bt{flex:none;font:10px/1.3 var(--mono);color:var(--dim);text-align:right;max-width:76px}
+:root .bellist .bt i{display:block;font-style:normal;font-weight:700;letter-spacing:.08em;color:var(--cyan2,#7fe3ff)}
+:root .bellist .bl.fresh{background:rgba(127,227,255,.06)!important}
+:root .bellist .bl .rectag{order:2;flex:none;margin:0}
+</style>
 <meta name="theme-color" content="#030a14">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -1356,7 +1378,7 @@ async function readMain(prev, known, knownEtag){
 // {same:true} = 304; prs:null = the key cannot read pull requests (403/404 that is not a rate limit); other errors are thrown.
 async function readPRs(etag){
   try { const r = await ghGET(`/repos/${GH.repo}/pulls?state=open&base=${GH.branch}&per_page=30`, [200, 304], etag); if(r.status === 304) return {same:true, etag:r.etag};
-    return {etag:r.etag, prs:r.body.map(p => ({number:p.number, title:p.title, draft:!!p.draft, body:String(p.body || "").slice(0, 900), url:p.html_url, head:p.head && p.head.ref, updated:p.updated_at}))}; }
+    return {etag:r.etag, prs:r.body.map(p => ({number:p.number, title:p.title, draft:!!p.draft, body:String(p.body || "").slice(0, 900), url:p.html_url, head:p.head && p.head.ref, sha:(p.head && p.head.sha) || "", updated:p.updated_at}))}; }
   catch(e){ if((e.status === 403 && !e.limited) || e.status === 404) return {prs:null, etag:""}; throw e; }
 }
 // ================= the Lab's live log: branch gps/live (append-only, never merged), live/<YYYY-MM-DD>.jsonl =================
@@ -1374,7 +1396,7 @@ function parseLive(text){ return String(text || "").split("\n").map(l => { try {
   .filter(e => e && typeof e === "object" && e.room === "lab" && /^[A-Z0-9][A-Z0-9-]{2,63}$/.test(e.task_id || "") && LIVE_NODE.test(String(e.node || ""))); }
 
 // the parts of the PR list the plan uses (the updated time alone does not change the plan)
-const prsKey = a => JSON.stringify(a ? a.map(p => [p.number, p.title, p.draft, p.body, p.url, p.head]) : null);
+const prsKey = a => JSON.stringify(a ? a.map(p => [p.number, p.title, p.draft, p.body, p.url, p.head, p.sha]) : null);
 
 // ================= parsers: main files -> model =================
 const mdClean = s => String(s).replace(/\*\*|`/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\s+/g, " ").trim();
@@ -1683,6 +1705,7 @@ document.addEventListener("keydown", e => { if(e.key === "Escape"){ if(!$("ip").
 let waiting = null;  // {room, thread}
 function setWaiting(w){ waiting = w; $("bPaste").classList.toggle("glow", !!w); if(typeof markNext === "function") markNext(); }
 function send(text, o = {}){
+  if(!o.noTrace) text = withTraceAsk(text);   // every prepared message ends by asking for the trace (not the read test)
   const rec = o.rec || "gpt", R = roomsGet();
   sheet(o.title || "Send", "Copied first, then the room opens", `<div class="ph" style="gap:6px"><span class="mono" style="font-size:10px;color:var(--dim);letter-spacing:.1em">WHAT WILL BE SENT · EDIT IF YOU WANT</span>${I("send")}</div>
     <textarea id="sTxt" aria-label="Text to send" style="min-height:120px;direction:auto">${esc(text)}</textarea>
@@ -1698,7 +1721,7 @@ function send(text, o = {}){
     if(isPackText(text) || isPackText(txt)){ const ed = packEdits(text, txt);   // what you added or changed in the dialog is kept; the thread itself is not stored again
       if(ed) th.msgs.push({from:"you",to,at:nowHM(),tx:ed,en:!/[؀-ۿ]/.test(ed.slice(0,160))});
       th.msgs.push({from:"you",to,at:nowHM(),pack:true,tx:"sent the thread to " + (to === "gpt" ? "ChatGPT" : "Claude"),en:true}); }
-    else th.msgs.push({from:"you",to,at:nowHM(),tx:txt,en:!/[؀-ۿ]/.test(txt.slice(0,160))});
+    else th.msgs.push({from:"you",to,at:nowHM(),tx:dropTraceAsk(txt),en:!/[؀-ۿ]/.test(txt.slice(0,160))});   // the thread keeps the message without the trace line
     saveLocal();
     setWaiting({room:to, thread:th}); closeSheet(); closeDoor();
     const RN = to === "gpt" ? "ChatGPT" : "Claude";
@@ -1826,7 +1849,7 @@ function openDoor(key){
   const fails = here.filter(r => r.op.steps.some(s => s.n === key && s.st === "fail"));
   let h = "";
   // 1) a problem here comes first: one big red card with the one recommended button inside
-  fails.forEach(r => h += fixBlock(r.op, r.op.steps.find(s => s.n === key && s.st === "fail"), OPS.indexOf(r.op)));
+  fails.forEach(r => h += fixBlock(r.op, doorFailOf(r.op, key), OPS.indexOf(r.op)));
   if(!MODEL) h += `<div class="dsec now"><span class="lab">NOT CONNECTED ${I("connect")}</span>${AR("لم يُقرأ main بعد. أضف مفتاح القراءة في MORE ← SETTINGS.")}</div>`;
   h += `<div class="dsec"><span class="lab">WHAT IT IS ${I("door")}</span>${AR(n.k === "stn" ? esc(STN_STORY[n.name]) : DOOR_STORY[key] || esc(n.ar || ""))}</div>`;
   // 2) what happened here: one big card per mission (tap to open the details)
@@ -1880,7 +1903,7 @@ function fixCommand(op, f){ const file = ROUTE_TO_FILE[op.route] || "INDEX";
     `1. Read the real state first. Do not repeat steps that already succeeded.`, `2. Follow brain/routes/${file}.md exactly:`, ...(op.proven || []).slice(op.provenDone || 0).map((p,i) => `   ${i+1}) ${p}`),
     `3. Do not call the blocked action again.`, `First line of your reply: ROUTE: ${op.route}`].join("\n"); }
 function doorAct(k, oi){
-  const op = OPS[oi], f = op.steps.find(x => x.st === "fail"), to = op.room === "claude" ? "claude" : "gpt";
+  const op = OPS[oi], f = doorFailOf(op, doorKey) || op.steps.find(x => x.st === "fail"), to = op.room === "claude" ? "claude" : "gpt";
   if(k === "replay"){ closeDoor(); go("home"); startReplay(oi); userPaused = false; playIcon(); return; }
   if(k === "fix") return send(fixCommand(op, f), {title:"Send fix", topic:op.chip, rec:to, about:op.ar});
   if(k === "cont") return send(`ROUTE: ${op.route}\nGPS CONTINUE · operation ${op.id}\nRead the real state first. Then continue from the step after "${f.a}". Do not repeat steps that already succeeded.\nFirst line of your reply: ROUTE: ${op.route}`, {title:"Continue", topic:op.chip, rec:to});
@@ -1905,12 +1928,17 @@ const PLAN_LOCAL = {
     {s:"new",t:"Live trail from the ChatGPT room",own:"IDEA",ar:"بعد حل P1 تكتب الغرفة أثرها بنفسها، فتراها حية مثل Claude.",why:"تتبع حي للغرفتين.",nx:"ينتظر قرار P1.",ev:"—"}]
 };
 let PLAN = {main:[], side:PLAN_LOCAL.side.slice(), ideas:PLAN_LOCAL.ideas.slice()};
+// the prepared PR message: the roles line always; a failed required check (read by the bell) is named first (EB-GPS-BELL-01)
+const PR_ROLES = "ChatGPT: review and recommend only. The Lab opens and merges PRs. If any step is not possible for you, stop and hand it to the Lab in one card.";
+function prFail(p){ const c = typeof CHECKS === "object" && CHECKS && p.sha ? CHECKS[p.sha] : null;
+  return c && c.failed ? `The required check ${REQ_CHECK} failed on ${p.sha.slice(0, 7)}${c.url ? " (" + c.url + ")" : ""}: find the real cause and fix it on the PR branch.\n` : ""; }
+function prSend(p){ return prFail(p) + `PR #${p.number} «${p.title}»: لخّص لي أثره في سطرين وتوصيتك، ثم أعطني بطاقة موافقة تسمّي الدمج.\n${PR_ROLES}`; }
 function buildPlan(){
   const S = MODEL ? MODEL.state : {done:[], open:[]}, prs = (MODEL && MODEL.prs) || [];
   const prItems = prs.filter(p => !S.open.some(x => new RegExp("#" + p.number + "\\b").test(x.t + " " + x.ar))).map(p => ({s:p.draft ? "next" : "wait", t:"PR #" + p.number + " · " + p.title, own:"LAB + YOU",
     ar:mdClean(p.body).slice(0, 420) || "طلب دمج مفتوح إلى main.", why:"لا يدخل main شيء إلا بطلب دمج وفحص أخضر وموافقتك.", nx:p.draft ? "مسودة: لم يُطلب قرارك بعد." : "ينتظر قرارك على الدمج.", ev:p.url,
-    send:`PR #${p.number} «${p.title}»: لخّص لي أثره في سطرين وتوصيتك، ثم أعطني بطاقة موافقة تسمّي الدمج.`, to:"claude", url:p.url}));
-  S.open.forEach(x => { const m = (x.t + " " + x.ar).match(/PR #(\d+)/); const p = m && prs.find(q => q.number === +m[1]); if(p) x.url = p.url; });
+    send:prSend(p), to:"claude", url:p.url}));
+  S.open.forEach(x => { const m = (x.t + " " + x.ar).match(/PR #(\d+)/); const p = m && prs.find(q => q.number === +m[1]); if(p){ x.url = p.url; if(x.send0 === undefined) x.send0 = x.send || ""; x.send = prFail(p) + x.send0 + "\n" + PR_ROLES; } });   // a PR joined to its STATE item: its own message, with the failed check first and the roles line
   const L = local.added || {};
   PLAN = {main:[...S.done, ...prItems, ...S.open, ...(L.main || [])], side:[...PLAN_LOCAL.side, ...(L.side || [])], ideas:[...PLAN_LOCAL.ideas, ...(L.ideas || [])]};
 }
@@ -2034,7 +2062,7 @@ function openTests(){
     ${T.length ? `<div class="lst">${T.map(t => `<div class="li" dir="auto"><span class="k">${esc(t.id)}</span>${t.result ? (t.result.verdict === "PASS" ? '<span style="color:var(--ok)">✓ PASS</span>' : '<span style="color:var(--bad)">✗ ' + esc(t.result.verdict) + "</span>") + " · " + (t.result.score != null ? t.result.score + "/" + t.result.total : "") : "waiting for the reply"}</div>`).join("")}</div>` : ""}`);
   const xt = $("xT"); if(xt) xt.onclick = () => { const id = "EB-PT-" + new Date().toISOString().replace(/[-:]/g, "").slice(0, 15).replace("T", "-") + "-" + Math.random().toString(16).slice(2, 8);
     const t = PROOF.make(MODEL.files, {id, head:MODEL.head, at:Date.now()}); local.tests = local.tests || {}; local.tests[id] = t; saveLocal();
-    send(PROOF.commandText(t), {title:"Read test", topic:"Read test", rec:"gpt"}); };
+    send(PROOF.commandText(t), {title:"Read test", topic:"Read test", rec:"gpt", noTrace:true}); };
 }
 function openRooms(){
   const R = roomsGet();
@@ -2104,7 +2132,7 @@ function nextAction(){
 }
 function markNext(){ const nx = nextAction();
   document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("has-next", !!nx && ((nx.kind === "wait" && b.dataset.n === "mission") || (nx.kind === "fail" && b.dataset.n === "home"))));
-  $("bAlerts").classList.toggle("has-next", !!nx); }
+  markBell(nx); }
 $("bAlerts").onclick = e => { if(e.target.closest(".i")) return; const nx = nextAction(); if(!nx) return toast("لا شيء ينتظرك الآن"); toast("التالي · " + nx.label); closeSheet(); nx.go(); };
 INFO.alerts = ["NEXT",["ما هو: زر «التالي». يأخذك مباشرة إلى أهم شيء ينتظرك الآن، والزر الذي عليك ضغطه هناك يكون مضيئًا.","الترتيب: خطأ يوقف العمل، ثم قرار ينتظرك، ثم رد تنتظر لصقه.","إذا لم يكن هناك شيء، لا يضيء شيء."]];
 $("bRefresh").onclick = () => refresh(false);
@@ -2152,7 +2180,7 @@ async function refreshPRs(){
 }
 // the Lab's live log (branch gps/live): checked every 1 s while the app is visible; a 304 ends the check at once (no new event, free).
 // On a new tip, yesterday's and today's files are read and the Lab's current task is drawn as a RUNNING mission.
-const LIVE_FAST = 1000; let liveMs = LIVE_FAST, liveT = null, liveBusy = false, liveWaitUntil = 0, liveStreak = 0;   // liveWaitUntil: GitHub's wait, kept on app switch too
+const LIVE_FAST = 1000; let liveMs = LIVE_FAST, liveT = null, liveBusy = false, liveWaitUntil = 0, liveStreak = 0, liveOkN = 0;   // liveOkN: whole checks that succeeded   // liveWaitUntil: GitHub's wait, kept on app switch too
 const liveWaitLeft = () => Math.max(0, Math.max(liveWaitUntil, acctUntil) - Date.now());
 // a rate limit is for the whole account (the key's user), so whichever loop meets it, both wait until the same time
 function shareWait(t){ acctUntil = Math.max(acctUntil, t); }
@@ -2160,7 +2188,7 @@ let LAB_LIVE = {head:"", etag:"", days:{}, events:[]};
 const utcDay = (d = 0) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
 async function liveCheck(){
   if(liveBusy || !token() || liveWaitLeft()) return; liveBusy = true;
-  const ok = () => { liveMs = LIVE_FAST; liveWaitUntil = 0; liveStreak = 0; };   // the whole check succeeded (the head, and the files when read)
+  const ok = () => { liveMs = LIVE_FAST; liveWaitUntil = 0; liveStreak = 0; liveOkN++; };   // the whole check succeeded (the head, and the files when read)
   try { const h = await liveHead(LAB_LIVE.etag);
     if(h.same) return ok();
     if(h.missing){ ok(); if(LAB_LIVE.events.length){ LAB_LIVE = {head:"", etag:"", days:{}, events:[]}; applyModel(); } return; }
@@ -2192,9 +2220,9 @@ function roadPath(a, b, rid){ if(a === b) return []; const pref = "S_" + rid, pr
   while(q.length){ const k = q.shift(); if(k === b) break; nb(k).forEach(n => { if(!(n in prev)){ prev[n] = k; q.push(n); } }); }
   if(!(b in prev)) return null; const out = []; for(let k = prev[b]; k && k !== a; k = prev[k]) out.unshift(k); return out; }
 // the Lab's current task (the last task in the live log) as a RUNNING mission; null when its verified trace is already on main
-function liveOp(onMain){
-  const evs0 = LAB_LIVE.events; if(!evs0.length) return null; const task = evs0[evs0.length - 1].task_id, evs = evs0.filter(e => e.task_id === task);
-  if(onMain.some(x => x.tr.task_id === task && ROOM_OF[x.tr.room] === "claude" && x.tr.verified === true)) return null;   // only the verified trace replaces it
+function liveOp(onMain, want){   // want: an earlier task in the log (opened from the bell); default: the current task
+  const evs0 = LAB_LIVE.events; if(!evs0.length) return null; const task = want || evs0[evs0.length - 1].task_id, evs = evs0.filter(e => e.task_id === task); if(!evs.length) return null;
+  if(!want && onMain.some(x => x.tr.task_id === task && ROOM_OF[x.tr.room] === "claude" && x.tr.verified === true)) return null;   // only the verified trace replaces it (an alert can still rebuild it from its events)
   const last = evs[evs.length - 1], rid = String(last.route_id || "").toUpperCase();
   const base = traceToOp({task_id:task, room:"lab", route_id:rid, base_ref:"", goal:"", steps:[], result:""}, {});
   const steps = []; let prev = "G_CL", hadFail = false;
@@ -2267,7 +2295,7 @@ function applyModel(){
   const onMain = MODEL ? MODEL.traces : [];
   local.pasted = (local.pasted || []).filter(p => !onMain.some(x => x.tr.task_id === p.task_id && x.tr.room === p.room));
   const lv = liveOp(onMain);
-  OPS = [...onMain.map(x => traceToOp(x.tr, {date:x.date, path:x.path})).sort((a, b) => String(b.at).localeCompare(String(a.at))), ...(lv ? [lv] : []), ...local.pasted.map(p => traceToOp(p, {pasted:true}))];
+  OPS = [...onMain.map(x => traceToOp(x.tr, {date:x.date, path:x.path})).sort((a, b) => String(b.at).localeCompare(String(a.at))), ...(lv ? [lv] : []), ...(typeof bellOps === "function" ? bellOps(onMain, lv) : []), ...local.pasted.map(p => traceToOp(p, {pasted:true}))];
   reconcileRuns(selKey); buildPlan();
   $("kOpen").textContent = PLAN.main.filter(x => x.s !== "done").length; $("kVer").textContent = OPS.filter(o => o.verdict === "VERIFIED").length; $("kFail").textContent = OPS.filter(o => o.verdict === "FAILED").length;
   drawCounters(); drawMissions(); markNext();
@@ -2286,6 +2314,141 @@ document.addEventListener("visibilitychange", () => { if(document.visibilityStat
   (token() ? refresh(true) : Promise.resolve()).finally(poll); liveCheck().finally(livePoll); });
 poll(); livePoll();
 (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(() => { const keep = mode, s = sel; buildMap(); fit(); drawCounters(); keep === "live" ? startLive() : startReplay(s); });
+
+// ================= EB-GPS-BELL-01 (founder, 2026-11-05): the bell says what is new =================
+// RED + number: failures not seen yet (a FAILED trace, a red live event, a failed required check on an open PR).
+// GREEN + number: tasks finished since the list was last opened (a new verified trace, a merged PR, a live task ending RESULT ok).
+// YELLOW: something waits for the founder (NEXT). No color: nothing new.
+// Red beats green and yellow; green shows over yellow until the list is opened, then yellow comes back.
+// Tapping the bell opens the list, newest first; opening it marks everything in it seen ("seen" is kept on this phone only).
+// Everything here is GET only, every 30 s while the app is visible, with ETags (an unchanged answer is a free 304).
+var DOOR_PICK = null, BELL_TASKS = [], bellReady = false, BELL = null, CHECKS = {}, MERGED = null, mergedEtag = "", checksOffAt = 0, bellT = null, bellBusy = false, liveRead = false;
+const K_BELL = "eb_gps_bell_v1", REQ_CHECK = "deterministic", BELL_MS = 30000, BELL_FIRST = 2000, CHECKS_RETRY = 600000;
+// the closed pull requests into main, newest first; only the merged ones are kept
+async function readMerged(etag){
+  try { const r = await ghGET(`/repos/${GH.repo}/pulls?state=closed&base=${GH.branch}&sort=updated&direction=desc&per_page=20`, [200, 304], etag);
+    if(r.status === 304) return {same:true, etag:r.etag};
+    return {etag:r.etag, merged:r.body.filter(p => p.merged_at).map(p => ({number:p.number, title:String(p.title || ""), at:p.merged_at, url:p.html_url, head:p.head && p.head.ref}))}; }
+  catch(e){ if((e.status === 403 && !e.limited) || e.status === 404) return {merged:[], etag:""}; throw e; }   // a key without PR access: nothing merged to show
+}
+// the required check on a PR's head commit; off = the key cannot read checks (it needs Checks: Read), which never slows the other checks
+async function readCheck(sha, etag){
+  try { const r = await ghGET(`/repos/${GH.repo}/commits/${sha}/check-runs?check_name=${encodeURIComponent(REQ_CHECK)}&filter=latest`, [200, 304], etag);
+    if(r.status === 304) return {same:true, etag:r.etag};
+    const x = (r.body.check_runs || []).find(c => c.name === REQ_CHECK);
+    return {etag:r.etag, c:x ? {id:x.id || 0, status:x.status, conclusion:x.conclusion || "", at:x.completed_at || x.started_at || "", url:x.html_url || "",
+      failed:x.status === "completed" && ["failure", "timed_out", "startup_failure", "action_required"].includes(x.conclusion)} : {status:"none", failed:false}}; }
+  catch(e){ if((e.status === 403 && !e.limited) || e.status === 404) return {off:true}; throw e; }
+}
+function bellStore(){ if(!BELL){ BELL = lsJSON(K_BELL) || {}; BELL.seen = BELL.seen || {}; BELL.first = BELL.first || {}; BELL.base = BELL.base || {}; } return BELL; }
+function bellSave(keep){ const B = bellStore(), old = Date.now() - 30 * 86400000;
+  Object.keys(B.first).forEach(k => { if(!keep.has(k) && B.first[k] < old){ delete B.first[k]; delete B.seen[k]; } });   // forget only what is gone and a month old
+  lsSet(K_BELL, JSON.stringify(B)); }
+const bellRoom = r => r === "claude" ? "CLAUDE" : r === "gpt" ? "CHATGPT" : String(r || "");
+function bellItems(){
+  const out = [], prs = (MODEL && MODEL.prs) || [];
+  OPS.forEach(o => { if(o.live || o.liveLog) return;
+    if((o.real || o.pasted) && o.verdict === "FAILED") out.push({key:"fail:" + o.id + (o.pasted ? ":pasted" : ""), red:true, src:"traces", room:bellRoom(o.room), task:o.task, st:"FAILED", day:o.at, what:o.whyShort, open:{k:"fail", id:o.id}});
+    else if(o.real && o.verdict === "VERIFIED") out.push({key:"ok:" + o.id, red:false, src:"traces", room:bellRoom(o.room), task:o.task, st:"DONE", day:o.at, what:"verified on main", open:{k:"op", id:o.id}}); });
+  (LAB_LIVE.events || []).forEach(e => { const oc = String(e.outcome || "").toLowerCase(), node = String(e.node || "").toUpperCase(), nm = N[node] ? N[node].name : node;
+    if(oc === "fail" || oc === "blocked") out.push({key:"lfail:" + e.ts + "|" + e.task_id + "|" + node, red:true, src:"live", room:"CLAUDE", task:e.task_id, st:"FAILED", at:Date.parse(e.ts) || 0, what:"live · " + nm + " · " + String(e.error || e.action || ""), open:{k:"live", task:e.task_id, node, red:true, a:String(e.action || ""), err:String(e.error || oc.toUpperCase())}});
+    else if(node === "RESULT" && oc === "ok") out.push({key:"ldone:" + e.task_id + "|" + e.ts, red:false, src:"live", room:"CLAUDE", task:e.task_id, st:"DONE", at:Date.parse(e.ts) || 0, what:"live · RESULT ok", open:{k:"live", task:e.task_id, node, red:false}}); });
+  prs.forEach(p => { const c = p.sha && CHECKS[p.sha]; if(c && c.failed) out.push({key:"ci:" + p.number + ":" + p.sha.slice(0, 12) + ":" + (c.id || c.at || ""), red:true, src:"checks", room:"GITHUB", task:"PR #" + p.number, st:"FAILED", at:Date.parse(c.at) || 0, what:REQ_CHECK + " failed · " + p.title, open:{k:"pr", n:p.number}}); });
+  (MERGED || []).forEach(p => out.push({key:"merged:" + p.number, red:false, src:"merged", room:"GITHUB", task:"PR #" + p.number, st:"DONE", at:Date.parse(p.at) || 0, what:"merged · " + p.title, open:{k:"merged", n:p.number}}));
+  return out;
+}
+// the bell's color and number (called by markNext, so it follows every redraw)
+function markBell(nx){
+  const b = $("bAlerts"); if(!b) return; if(!bellReady){ b.classList.toggle("has-next", !!nx); return; }
+  const B = bellStore(), it = bellItems(), now = Date.now(); let dirty = false;
+  // what was already finished when a source was first read is not news (failures stay news until seen)
+  const ready = {traces:!!MODEL, live:liveRead, merged:MERGED !== null};
+  Object.keys(ready).forEach(src => { if(!B.base[src] && ready[src]){ it.filter(x => x.src === src && !x.red).forEach(x => { B.seen[x.key] = 1; }); B.base[src] = now; dirty = true; } });
+  it.forEach(x => { if(!B.first[x.key]){ B.first[x.key] = now; dirty = true; } });
+  if(dirty) bellSave(new Set(it.map(x => x.key)));
+  const red = it.filter(x => x.red && !B.seen[x.key]).length, green = it.filter(x => !x.red && !B.seen[x.key]).length;
+  const c = red ? "red" : green ? "green" : nx ? "yellow" : "";
+  b.classList.toggle("bell-red", c === "red"); b.classList.toggle("bell-green", c === "green"); b.classList.toggle("has-next", c === "yellow");
+  let n = b.querySelector(".bn"); if(!n){ n = document.createElement("b"); n.className = "bn"; b.appendChild(n); }
+  const num = c === "red" ? red : c === "green" ? green : 0; n.textContent = num > 99 ? "99+" : num ? String(num) : ""; n.hidden = !num;
+  b.dataset.bell = c; b.setAttribute("aria-label", "Alerts" + (c ? " · " + c + (num ? " " + num : "") : ""));
+}
+const bellWhen = (x, B) => x.at || Math.min(B.first[x.key] || Date.now(), x.day ? Date.parse(x.day + "T23:59:59Z") || Infinity : Infinity);
+function bellTime(x, t){ if(!x.at) return x.day || ""; const d = new Date(t), p = v => String(v).padStart(2, "0"), hm = p(d.getHours()) + ":" + p(d.getMinutes());
+  return new Date().toDateString() === d.toDateString() ? hm : d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + hm; }
+let BELL_LIST = [];
+function openBell(all){
+  const B = bellStore(), it = bellItems(), nx = nextAction();
+  const sorted = it.map(x => Object.assign(x, {t:bellWhen(x, B), fresh:!B.seen[x.key]})).sort((a, b) => b.t - a.t);
+  BELL_LIST = all ? sorted : sorted.filter((x, i) => i < 40 || x.fresh);   // every unseen item is shown, so none is marked seen unseen
+  const more = sorted.length - BELL_LIST.length;
+  let h = nx ? `<button class="row bl" data-bl="next"><span class="g"><b>${nx.kind === "fail" ? "FIX FIRST" : nx.kind === "paste" ? "PASTE THE REPLY" : "WAITING · YOU"}</b><span dir="auto">${esc(nx.label)}</span></span><span class="rectag">RECOMMENDED</span></button>` : "";
+  h += BELL_LIST.map((x, i) => `<button class="row bl ${x.red ? "bl-red" : "bl-green"}${x.fresh ? " fresh" : ""}" data-bl="${i}"><span class="st">${x.st}</span><span class="g"><b dir="auto">${esc(x.room)} · ${esc(x.task)}</b><span dir="auto">${esc(String(x.what || "").slice(0, 140))}</span></span><span class="bt">${esc(bellTime(x, x.t))}${x.fresh ? "<i>NEW</i>" : ""}</span></button>`).join("");
+  if(more > 0) h += `<button class="linkbtn" id="blMore">SHOW ${more} OLDER</button>`;
+  if(!h) h = AR("لا شيء جديد. حين تنجح مهمة أو تفشل، تظهر هنا، والأحدث أولًا.");
+  sheet("ALERTS", "Newest first · opening marks them seen", `<div class="bellist">${h}</div>`);
+  $("shB").querySelectorAll("[data-bl]").forEach(r => r.onclick = () => { const k = r.dataset.bl; closeSheet(); playerTouch = Date.now();   // like a tap on the player: LIVE does not take the map back for 10 s
+    if(k === "next"){ const n = nextAction(); if(n) n.go(); return; } bellGo(BELL_LIST[+k]); });
+  const bm = $("blMore"); if(bm) bm.onclick = () => openBell(true);
+  BELL_LIST.forEach(x => { B.seen[x.key] = 1; }); bellSave(new Set(it.map(x => x.key))); markNext();   // only what is shown is marked seen
+}
+// each line opens its place: a failure opens the door with the fix, a finished task opens its mission replay
+function bellGo(x){ if(!x) return; const o = x.open;
+  const idx = id => OPS.findIndex(y => y.id === id);
+  const replay = i => { go("home"); startReplay(i); userPaused = false; playIcon(); };
+  const door = (i, n, pick) => { const op = OPS[i], f = (pick && op.steps.find(s => s.st === "fail" && s.n === pick.n && s.a === pick.a && s.err === pick.err)) || (n && op.steps.filter(s => s.n === n && s.st === "fail").pop()) || op.steps.find(s => s.st === "fail") || op.steps[op.steps.length - 1];
+    go("home"); startReplay(i); const r = selRun(); if(r) setAt(r.total); userPaused = true; playIcon();
+    setTimeout(() => { DOOR_PICK = f.st === "fail" ? {n:f.n, a:f.a, err:f.err} : null; openDoor(f.n); }, 400); };   // the door shows and fixes this very failure
+  if(o.k === "fail" || o.k === "op"){ const i = idx(o.id); if(i < 0) return toast("هذه المهمة لم تعد على الخريطة"); return o.k === "fail" ? door(i) : replay(i); }
+  if(o.k === "live"){   // a red line is rebuilt from its live events (the verified trace has no live steps); a green one prefers the verified trace
+    const find = () => { let i = OPS.findIndex(y => y.live && y.task === o.task); if(i < 0 && !o.red) i = OPS.findIndex(y => y.real && y.task === o.task); if(i < 0) i = OPS.findIndex(y => y.liveLog && y.task === o.task); return i; };
+    let i = find();
+    if(i < 0 && (LAB_LIVE.events || []).some(e => e.task_id === o.task)){ if(!BELL_TASKS.includes(o.task)) BELL_TASKS.push(o.task); applyModel(); i = find(); }   // an earlier task: its mission is built from its own live events
+    if(i < 0) return toast("هذه المهمة الحية لم تعد على الخريطة · " + x.what); return o.red ? door(i, o.node, {n:o.node, a:o.a, err:o.err}) : replay(i); }
+  if(o.k === "pr"){ go("plan"); planTab = "main"; drawPlan(); const it = PLAN.main.find(y => new RegExp("^PR #" + o.n + "\\b").test(y.t)) || PLAN.main.find(y => new RegExp("#" + o.n + "\\b").test(y.t + " " + (y.ar || "")));
+    return it ? planItem(it) : toast("طلب الدمج #" + o.n + " لم يعد مفتوحًا"); }
+  if(o.k === "merged"){ const p = (MERGED || []).find(y => y.number === o.n); if(!p) return;
+    const i = OPS.findIndex(y => y.real && y.task && (p.title.includes(y.task) || String(p.head || "").toUpperCase().includes(y.task)));
+    if(i >= 0) return replay(i);
+    sheet("PR #" + p.number, "DONE · merged into main", `<div class="dsec good"><span class="lab">DONE · MERGED</span><span class="ctitle" dir="auto">${esc(p.title)}</span>${AR("دُمج في main" + (p.at ? " · " + esc(p.at.slice(0, 16).replace("T", " ")) + " UTC" : "") + ". لا رحلة مسجلة له على الخريطة بعد.")}<a class="linkbtn" href="${esc(p.url)}" target="_blank" rel="noopener">↗ OPEN ON GITHUB</a></div>`); }
+}
+// the failure a door shows: the one picked from an alert (same node, action and error), else the first at that node
+function doorFailOf(op, key){ const P = DOOR_PICK; return (P && P.n === key && op.steps.find(s => s.st === "fail" && s.n === P.n && s.a === P.a && s.err === P.err)) || op.steps.find(s => s.n === key && s.st === "fail"); }
+{ const od = openDoor; openDoor = function(key){ const P = DOOR_PICK; DOOR_PICK = null; if(P && P.n === key) DOOR_PICK = P; return od(key); }; }   // a pick lasts for its own door only
+{ const cd = closeDoor; closeDoor = function(){ DOOR_PICK = null; return cd.apply(this, arguments); }; }
+// earlier live tasks opened from the bell: kept on the map as REPORTED missions built from their own events (not live, not counted)
+function bellOps(onMain, lv){ return (BELL_TASKS || []).filter(t => !(lv && lv.task === t)).map(t => { const o = liveOp(onMain, t); return o && Object.assign(o, {id:t + "-livelog", live:false, liveLog:true, verdict:"REPORTED", chip:String(t).replace(/^EB-/, "") + " · LIVE LOG"}); }).filter(Boolean); }
+// the bell's own check: merged PRs and the required check of each open PR; never before GitHub's wait ends, never while hidden
+async function bellCheck(){
+  if(bellBusy || !token() || !MODEL || waitLeft() || document.visibilityState !== "visible") return; bellBusy = true; let changed = false;
+  try { const m = await readMerged(mergedEtag);
+    if(!m.same){ mergedEtag = m.etag; if(JSON.stringify(m.merged) !== JSON.stringify(MERGED)){ MERGED = m.merged; changed = true; } }
+    if(Date.now() - checksOffAt > CHECKS_RETRY){ checksOffAt = 0;
+      for(const p of ((MODEL && MODEL.prs) || []).filter(p => !p.draft && p.sha)){ const old = CHECKS[p.sha], r = await readCheck(p.sha, old ? old.etag : "");
+        if(r.off){ checksOffAt = Date.now(); break; }
+        if(r.same) continue; const nv = Object.assign({etag:r.etag}, r.c); if(JSON.stringify(nv) !== JSON.stringify(old)){ CHECKS[p.sha] = nv; changed = true; } } } }
+  catch(e){ if(e.status === 429 || e.limited || e.waitMs > 0) shareWait(Date.now() + Math.max(60000, e.waitMs || 0)); }   // a rate limit pauses every check (account-wide)
+  finally { bellBusy = false; }
+  if(changed){ buildPlan(); markNext(); if(!$("pgPlan").hidden) drawPlan(); if(!$("pgMission").hidden) drawMission(); }
+}
+function bellPoll(first){ clearTimeout(bellT); bellT = null; if(document.visibilityState !== "visible") return;
+  bellT = setTimeout(async () => { bellT = null; await bellCheck(); bellPoll(); }, Math.max(waitLeft(), first ? BELL_FIRST : BELL_MS)); }
+document.addEventListener("visibilitychange", () => { if(document.visibilityState !== "visible"){ clearTimeout(bellT); bellT = null; return; } bellPoll(true); });
+// the live log was read once: what it already held is the baseline
+// (only a check that really read the log counts: not one skipped for want of a key, not one that failed)
+{ const lc = liveCheck; liveCheck = async function(){ const n0 = liveOkN; await lc(); if(!liveRead && liveOkN > n0){ liveRead = true; markNext(); } }; }
+// a copy of the PR list from the previous build has no head sha: read the list once more (no ETag) so the checks can be read
+if(cache && cache.prs && cache.prs.some(p => !("sha" in p))){ cache = Object.assign({}, cache, {etags:Object.assign({}, etagsOf(cache), {prs:""})}); saveCache(cache); }
+$("bAlerts").onclick = e => { if(e.target.closest(".i")) return; closeSheet(); openBell(); };
+INFO.alerts = ["ALERTS",["ما هو: الجرس. يقول لك ما الجديد.","أحمر مع رقم: فشل لم تره بعد: رحلة فشلت، أو خطوة حمراء في الرحلة الحية، أو فحص إلزامي فشل على طلب دمج مفتوح.","أخضر مع رقم: مهام انتهت منذ آخر مرة فتحت القائمة: رحلة فُحصت على main، أو طلب دمج دُمج، أو رحلة حية انتهت بنجاح.","أصفر: شيء ينتظرك أنت. بلا لون: لا جديد.","المسه لتفتح القائمة، والأحدث أولًا. المس سطرًا ليأخذك إلى مكانه. فتح القائمة يجعل ما فيها مقروءًا، على هاتفك فقط."]];
+if(INFO.connect && Array.isArray(INFO.connect[1])) INFO.connect[1].push("لترى في الجرس فحصًا فشل على طلب دمج، أضف إلى المفتاح Checks: Read. بدونه يعمل كل شيء آخر كما هو.");
+bellReady = true; markNext(); bellPoll(true);
+
+// ================= prepared room messages (EB-GPS-BELL-01) =================
+// every prepared message asks for the trace at its end (not the read test, whose answer block must stay last)
+function traceAsk(){ return "At the end of your reply, give your trace as one JSON block (eb-trace/v1)"; }
+function withTraceAsk(t){ const x = String(t || "").replace(/\s+$/, ""); return x.endsWith(traceAsk()) ? x : x + "\n\n" + traceAsk(); }
+function dropTraceAsk(t){ const x = String(t || "").replace(/\s+$/, ""); return x.endsWith(traceAsk()) ? x.slice(0, -traceAsk().length).replace(/\s+$/, "") : String(t || ""); }
 </script>
 
 </body>
