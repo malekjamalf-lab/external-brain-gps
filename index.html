@@ -89,6 +89,11 @@
 :root .lcomm .lcr.k-blocked .lck{color:var(--bad,#ff5468)}
 :root .lcomm .lcr.k-need_approval{border-color:rgba(255,138,61,.55)}
 :root .lcomm .lcr.k-need_approval .lck{color:#ff8a3d}
+:root .mapvoice{position:absolute;right:8px;bottom:8px;z-index:3;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:9px;background:rgba(3,10,20,.75);color:var(--dim);font:600 9.5px/1 var(--mono);letter-spacing:.06em;padding:7px 9px}
+:root .mapvoice svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+:root .mapvoice svg path:first-child{fill:currentColor;stroke:none}
+:root .mapvoice.on{color:var(--cyan2,#7fe3ff);border-color:rgba(127,227,255,.55)}
+:root #pgMore .lcomm{margin-top:12px}
 </style>
 <style>
 /* MORE → ARCHIVE (founder, 2026-11-05): the branch archive plan, read only. Every rule starts with :root. */
@@ -2163,11 +2168,18 @@ function openSettings(){
 }
 // ================= paste (detects the type; replies go back to their thread) =================
 $("bPaste").onclick = () => openPaste("");
+// after a reply with traces is drawn: send it on to a room (Claude recommended: the Lab checks it), or just keep it on the map
+function afterTrace(v, n, th){ if(!$("sheet").hidden || !$("door").hidden || $("pgHome").hidden) return;   // only if the founder is still on the map with nothing open (Codex review of #55)
+  sheet("Reply read", (n > 1 ? n + " traces" : "1 trace") + " drawn on the map · REPORTED",
+  AR("رُسم الأثر على الخريطة. هل ترسل الرد إلى غرفة؟ المختبر يفحصه ويثبّته على main.") +
+  `<button class="bigbtn" id="atCl"><span class="rectag">RECOMMENDED</span>SEND THE REPLY TO CLAUDE<small>يفحص المختبر الأثر</small></button><div class="btns" style="margin-top:8px"><button class="btn2" id="atGpt">SEND TO CHATGPT</button><button class="btn2" id="atNo">ONLY THE MAP</button></div>`);
+  const fw = to => send("Reply from the room (trace drawn in GPS):\n" + v, {title:"Send the reply", thread:th, rec:to});
+  $("atCl").onclick = () => fw("claude"); $("atGpt").onclick = () => fw("gpt"); $("atNo").onclick = () => closeSheet(); }
 function openPaste(pre){
   sheet("Paste a reply", waiting ? "Waiting for " + (waiting.room === "gpt" ? "ChatGPT" : "Claude") + " · " + waiting.thread.title : "From any room · the app detects the type",
     `<div class="ph" style="gap:6px"><span class="mono" style="font-size:10px;color:var(--dim)">COPY THE WHOLE REPLY IN ITS ROOM, THEN</span>${I("paste")}</div>
     ${navigator.clipboard && navigator.clipboard.readText ? `<button class="btn2" id="pClip">PASTE FROM CLIPBOARD</button>` : ""}
-    <textarea id="pTxt" aria-label="Reply" placeholder="Paste here">${esc(pre || "")}</textarea><button class="act glow" id="pGo">READ THE REPLY</button>`);
+    <textarea id="pTxt" aria-label="Reply" placeholder="Paste here">${esc(pre || "")}</textarea><button class="act glow" id="pGo">READ THE REPLY<small style="display:block;font-size:10px;opacity:.8">تُرسم الآثار على الخريطة، ثم تختار الغرفة</small></button>`);
   const pc = $("pClip"); if(pc) pc.onclick = async () => { try { $("pTxt").value = await navigator.clipboard.readText(); } catch(e){ toast("الهاتف لم يسمح بقراءة الحافظة · الصق باليد"); } };
   $("pGo").onclick = () => readReply($("pTxt").value);
 }
@@ -2192,6 +2204,7 @@ async function readReply(v){
       th.msgs.push({from:ROOM_OF[TR.room] || from, to:"you", at:nowHM(), tx:"trip report · " + TR.task_id + " · " + (TR.result || "?"), att:"trip report · drawn on the map", opId:op.id, en:true}); });
     local.pasted = local.pasted.slice(-Math.max(12, TRS.length));   // the phone keeps the last 12 pasted traces, and never fewer than this paste brought
     setWaiting(null); saveLocal(); applyModel(); go("home"); startReplay(OPS.findIndex(o => o.id === op.id)); userPaused = false; playIcon();
+    setTimeout(() => afterTrace(v, TRS.length, th), 900);   // the founder's live test (2026-11-05): after the map, offer to send the reply to a room
     return toast(TRS.length + (TRS.length > 1 ? " traces drawn" : " trace drawn") + " · " + (TRS.length > 1 ? "رُسمت " + TRS.length + " رحلات" : "رُسمت رحلة") + " على الخريطة · REPORTED حتى يفحصها المختبر وتصل إلى main"); }
   th.msgs.push({from, to:"you", at:nowHM(), tx:v, en:!/[؀-ۿ]/.test(String(v).slice(0, 160))}); setWaiting(null); saveLocal(); thread = th; go("talk");
   toast((/```\s*eb-trace\s*\n/i.test(v) ? "صيغة أثر قديمة · اطلب من الغرفة eb-trace/v1 · " : "") + "رد عادي" + (route ? " · ROUTE: " + route : "") + " · دخل الخيط «" + th.title + "»");
@@ -2559,7 +2572,7 @@ function openLabRoom(){ const url = roomsGet().claude; if(!url) return toast("ا
   const it = roomIntent(url, navigator.userAgent); if(it){ try { openIntent(it); return; } catch(e){} }
   try { if(window.open(url, "_blank", "noopener")) return; } catch(e){}
   const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); }
-function lcDraw(force){ const box = $("lcomm"); if(!box) return; const c = lcCur();
+function lcDraw(force){ lcMapBtn(); const box = $("lcomm"); if(!box) return; const c = lcCur();
   const pk = lcPending(), sig = (c ? c.task + "|" + c.events.length + "|" + lcKey(c.events[c.events.length - 1]) : "-") + "|" + (pk ? lcKey(pk) : "") + "|" + lcOn + "|" + lcOpenKey;
   if(!force && sig === lcSig) return; lcSig = sig;
   const head = `<div class="lch"><b>LIVE COMMENTARY</b><span class="lct mono">${c ? esc(c.task) : ""}</span><span class="sp"></span><button class="lcv${lcOn ? " on" : ""}" id="lcVoice" aria-pressed="${lcOn}"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/>${lcOn ? '<path d="M16 8.5a5 5 0 0 1 0 7M18.6 6a8.5 8.5 0 0 1 0 12"/>' : '<path d="M17 9l5 6M22 9l-5 6"/>'}</svg>${lcOn ? "VOICE ON" : "VOICE OFF"}</button>${I("comm")}</div>`;
@@ -2570,9 +2583,7 @@ function lcDraw(force){ const box = $("lcomm"); if(!box) return; const c = lcCur
       return `<div class="lcr k-${kind}${open ? " open" : ""}" data-lk="${esc(k)}" role="button" tabindex="0"><span class="lck">${LC_KIND[kind]}</span><span class="lcs" dir="auto">${e.task_id !== c.task ? esc(e.task_id) + " · " : ""}${esc(lcSay(e))}</span><time>${esc(lcHM(e.ts))}</time>` +
         (open ? `<div class="lcd" dir="auto">${esc(String(e.detail_ar || "").trim() || "لا تفاصيل لهذا الحدث.")}</div>` : "") +
         (pend === e ? `<button class="bigbtn lcroom" id="lcRoom"><span class="rectag">RECOMMENDED</span>OPEN THE LAB ROOM<small>المختبر ينتظر موافقتك هناك</small></button>` : "") + `</div>`; }).join("") + `</div>`; }
-  $("lcVoice").onclick = e => { if(e.target.closest(".i")) return; lcOn = !lcOn; lsSet(LC_VOICE, lcOn ? "1" : "0");
-    if(lcOn){ if(!("speechSynthesis" in window)) lcNoVoice(); else if(!arVoice() && (speechSynthesis.getVoices() || []).length) lcNoVoice(); } else { try { speechSynthesis.cancel(); } catch(x){} }
-    toast(lcOn ? "VOICE ON · يُقرأ كل حدث جديد مرة واحدة" : "VOICE OFF · نص فقط"); lcDraw(true); };
+  $("lcVoice").onclick = e => { if(e.target.closest(".i")) return; lcToggle(); };
   box.querySelectorAll(".lcr").forEach(r => r.onclick = e => { if(e.target.closest(".lcroom, .i")) return; lcOpenKey = lcOpenKey === r.dataset.lk ? "" : r.dataset.lk; lcDraw(true); });
   const rb = $("lcRoom"); if(rb) rb.onclick = e => { e.stopPropagation(); openLabRoom(); };
 }
@@ -2589,7 +2600,7 @@ function workTag(run, tx, ty){
   if(!live || ended){ if(run.wk) run.wk.style.display = "none"; return; }
   if(!run.wk){ run.wk = el("g", {class:"wk"}, gTop); run.wkBg = el("rect", {rx:5, height:14, fill:"#030a14", "stroke-width":"1"}, run.wk);
     run.wkTx = el("text", {"font-family":"JetBrains Mono, monospace", "font-size":"7.5", y:10, x:5}, run.wk); }
-  const m = Math.max(0, Math.floor((Date.now() - (Date.parse(e.ts) || Date.now())) / 60000)), quiet = m >= 15, t = (quiet ? "NO EVENT · " : "WORKING · ") + m + " min";
+  const m = Math.max(0, Math.floor((Date.now() - (Date.parse(e.ts) || Date.now())) / 60000)), quiet = m >= 15, t = (lcOn ? "🔊 " : "") + (quiet ? "NO EVENT · " : "WORKING · ") + m + " min";
   if(run.wkTx.textContent !== t){ run.wkTx.textContent = t; run.wkBg.setAttribute("width", t.length * 4.6 + 10); run.wk.setAttribute("data-state", quiet ? "quiet" : "working"); }
   run.wkBg.setAttribute("stroke", quiet ? "#ffc04d" : run.c); run.wkTx.setAttribute("fill", quiet ? "#ffc04d" : "#bfefff");
   run.wk.setAttribute("transform", `translate(${tx} ${ty + 21})`); run.wk.style.display = "";
@@ -2598,29 +2609,36 @@ function workTag(run, tx, ty){
 { const na = nextAction; nextAction = function(){ const r = na(); if(r && r.kind === "fail") return r; const a = lcPending();
     return a ? {kind:"approval", label:"المختبر ينتظر موافقتك · " + lcSay(a), go:() => openLabRoom()} : r; }; }
 { const lc = liveCheck; liveCheck = async function(){ await lc(); lcTick(); }; }
-{ const box = document.createElement("section"); box.className = "lcomm"; box.id = "lcomm"; box.setAttribute("aria-label", "Live commentary"); $("pgHome").appendChild(box); }
-INFO.comm = ["LIVE COMMENTARY",["ما هو: تعليق حي على عمل المختبر الآن: بداية كل مهمة، ونبضة كل دقيقتين في العمل الطويل، ونهايتها، والأحدث أولًا.","المس سطرًا لترى التفاصيل: ما عُمل، ولماذا، والعوائق، وأين حُفظ، وما التالي.","زر VOICE يشغّل الصوت العربي: يُقرأ كل حدث جديد مرة واحدة. يبقى اختيارك على هاتفك.","حين يحتاج المختبر موافقتك يصير الجرس أصفر، ويظهر زر OPEN THE LAB ROOM."]];
+// the written strip lives in MORE (the founder, 2026-11-05: the map keeps its full size); on the map the car speaks
+{ const box = document.createElement("section"); box.className = "lcomm"; box.id = "lcomm"; box.setAttribute("aria-label", "Live commentary"); $("pgMore").appendChild(box); }
+{ const mb = document.createElement("button"); mb.id = "lcMapVoice"; mb.className = "mapvoice"; mb.setAttribute("aria-label", "The car speaks: voice on or off"); $("mapBox").appendChild(mb); mb.onclick = e => { e.stopPropagation(); lcToggle(); }; }
+function lcToggle(){ lcOn = !lcOn; lsSet(LC_VOICE, lcOn ? "1" : "0");
+  if(lcOn){ if(!("speechSynthesis" in window)) lcNoVoice(); else if(!arVoice() && (speechSynthesis.getVoices() || []).length) lcNoVoice(); } else { try { speechSynthesis.cancel(); } catch(x){} }
+  toast(lcOn ? "صوت السيارة يعمل · تقرأ كل حدث جديد مرة واحدة" : "صوت السيارة متوقف"); lcDraw(true); }
+function lcMapBtn(){ const b = $("lcMapVoice"); if(!b) return; b.classList.toggle("on", lcOn); b.setAttribute("aria-pressed", String(lcOn));
+  b.innerHTML = `<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/>${lcOn ? '<path d="M16 8.5a5 5 0 0 1 0 7M18.6 6a8.5 8.5 0 0 1 0 12"/>' : '<path d="M17 9l5 6M22 9l-5 6"/>'}</svg><span>${lcOn ? "VOICE" : "MUTE"}</span>`; }
+INFO.comm = ["LIVE COMMENTARY",["ما هو: سجلّ مكتوب لما تقوله السيارة: تعليق حي على عمل المختبر الآن: بداية كل مهمة، ونبضة كل دقيقتين في العمل الطويل، ونهايتها، والأحدث أولًا.","المس سطرًا لترى التفاصيل: ما عُمل، ولماذا، والعوائق، وأين حُفظ، وما التالي.","زر السماعة على الخريطة (أو هنا) يجعل السيارة تتكلم بالعربي: تقرأ كل حدث جديد مرة واحدة. يبقى اختيارك على هاتفك.","حين يحتاج المختبر موافقتك يصير الجرس أصفر، ويظهر زر OPEN THE LAB ROOM."]];
 lcOn = lsGet(LC_VOICE) === "1"; lcDraw(true);
 
 // ================= a living background (founder, 2026-11-05): visual only =================
 // The background dot grid and the faint circuit lines carry a slow, soft light wave from right to left that rises and falls
 // gently, like breathing. Background layer only: it sits under the roads, buildings, cars and marks, takes no taps, and is
-// much fainter than them. One cheap layer: a lit copy of the dots and lines under one moving mask, updated at most 30 times a
+// fainter than them (founder, 2026-11-05: the first version was too faint to see on a phone). One cheap layer: a lit copy of the dots and lines under one moving mask, updated at most 30 times a
 // second (one attribute pair per update), paused while the app is hidden, and static under prefers-reduced-motion.
 var WAVE = {on:false, last:0, t0:0, raf:0, frames:0};
 const WAVE_MS = 30, WAVE_SWEEP = 16000, WAVE_BREATH = 6000;
 function waveLayer(){
   const dots = svg.querySelector('rect[fill="url(#dots)"]'); if(!dots || svg.querySelector("#waveDots")) return;
   const defs = svg.querySelector("defs");
-  defs.insertAdjacentHTML("beforeend", `<pattern id="dotsLit" width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#3a9bd6"/></pattern>
+  defs.insertAdjacentHTML("beforeend", `<pattern id="dotsLit" width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1.5" fill="#7fd8ff"/></pattern>
     <linearGradient id="waveG" x1="0" y1="0" x2="1" y2="0" gradientTransform="rotate(14 .5 .5)"><stop offset="0" stop-color="#000"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
-    <mask id="waveM" maskUnits="userSpaceOnUse" x="-400" y="-400" width="${WW + 800}" height="${WH + 800}"><rect id="waveR" x="${WW}" y="-400" width="${Math.round(WW * 0.55)}" height="${WH + 800}" fill="url(#waveG)"/></mask>`);
-  const lit = el("rect", {id:"waveDots", x:-400, y:-400, width:WW + 800, height:WH + 800, fill:"url(#dotsLit)", mask:"url(#waveM)", opacity:reduce ? ".12" : ".3", "pointer-events":"none"});
+    <mask id="waveM" maskUnits="userSpaceOnUse" x="-400" y="-400" width="${WW + 800}" height="${WH + 800}"><rect id="waveR" x="${WW}" y="-400" width="${Math.round(WW * 0.6)}" height="${WH + 800}" fill="url(#waveG)"/></mask>`);
+  const lit = el("rect", {id:"waveDots", x:-400, y:-400, width:WW + 800, height:WH + 800, fill:"url(#dotsLit)", mask:"url(#waveM)", opacity:reduce ? ".25" : ".7", "pointer-events":"none"});
   dots.after(lit);
   const deco = lit.nextElementSibling;   // the faint circuit lines drawn right after the dots
   if(deco && deco.tagName === "g" && deco.getAttribute("stroke") === "#0e3050"){
-    const lines = deco.cloneNode(true); lines.id = "waveLines"; lines.setAttribute("stroke", "#1f6ea3"); lines.setAttribute("mask", "url(#waveM)"); lines.setAttribute("opacity", reduce ? ".15" : ".4"); lines.setAttribute("pointer-events", "none");
-    lines.querySelectorAll("circle").forEach(c => c.setAttribute("fill", "#1f6ea3")); deco.after(lines); }
+    const lines = deco.cloneNode(true); lines.id = "waveLines"; lines.setAttribute("stroke", "#3fa6e6"); lines.setAttribute("mask", "url(#waveM)"); lines.setAttribute("opacity", reduce ? ".25" : ".7"); lines.setAttribute("pointer-events", "none");
+    lines.querySelectorAll("circle").forEach(c => c.setAttribute("fill", "#3fa6e6")); deco.after(lines); }
   if(reduce){ const r = $("waveR"); if(r){ r.setAttribute("x", String(Math.round(WW * 0.25))); } }   // reduced motion: one still, faint glow
 }
 function waveStep(now){ WAVE.raf = 0; if(!WAVE.on) return;
@@ -2630,7 +2648,7 @@ function waveStep(now){ WAVE.raf = 0; if(!WAVE.on) return;
       const y = -400 + Math.sin(now / 9000 * 2 * Math.PI) * 26;   // rising and falling gently
       r.setAttribute("x", x.toFixed(1)); r.setAttribute("y", y.toFixed(1)); }
     const b = 0.62 + 0.38 * Math.sin(now / WAVE_BREATH * 2 * Math.PI);   // breathing
-    if(lit) lit.setAttribute("opacity", (0.3 * b).toFixed(3)); if(lines) lines.setAttribute("opacity", (0.4 * b).toFixed(3)); }
+    if(lit) lit.setAttribute("opacity", (0.7 * b).toFixed(3)); if(lines) lines.setAttribute("opacity", (0.7 * b).toFixed(3)); }
   WAVE.raf = requestAnimationFrame(waveStep); }
 function waveStart(){ if(reduce || WAVE.on || document.visibilityState !== "visible") return; WAVE.on = true; if(!WAVE.t0) WAVE.t0 = performance.now(); WAVE.raf = requestAnimationFrame(waveStep); }
 function waveStop(){ WAVE.on = false; if(WAVE.raf) cancelAnimationFrame(WAVE.raf); WAVE.raf = 0; }
@@ -2653,10 +2671,12 @@ function parseArchive(text){ const rows = [];
   return rows; }
 function archWhyAr(w){ return /Open PR/.test(w) ? "طلب دمج مفتوح " + w.replace(/.*Open PR\s*/, "") : /Reachable from main/.test(w) ? "كل ما فيه موجود في main"
   : /Historical unmerged/.test(w) ? "عمل قديم غير مدموج: يُراجَع قبل أي حذف" : /Recent unmerged/.test(w) ? "عمل حديث غير مدموج: يُقيَّم" : /hand-off/i.test(w) ? "تسليم نشط للمختبر" : w; }
+// the reason in Arabic as HTML: Latin parts (PR #39 (head), main) are isolated so the line keeps its order
+function archWhyHtml(w){ return esc(archWhyAr(w)).replace(/(#\d+(?: \((?:head|base)\))?|\bmain\b)/g, '<bdi dir="ltr">$1</bdi>'); }
 function openArchive(){
   const f = archFile(), rows = f ? parseArchive(MODEL.files[f].text) : [];
   let flt = lsGet(K_ARCH) || "ALL"; if(!ARCH_AR[flt]) flt = "ALL";
-  const top = `<div class="arsafe"><b>خطة فقط · لم يُنشأ tag ولم يُحذف فرع</b></div>`;
+  const top = `<div class="arsafe" dir="rtl"><b>خطة فقط · لم يُنشأ <bdi>tag</bdi> ولم يُحذف فرع</b></div>`;
   if(!rows.length){ sheet("ARCHIVE", "Branch archive plan · main " + (MAIN_HEAD || "not read"), top + AR(MODEL ? "no archive plan on main yet · لا توجد خطة أرشفة على main بعد." : "لم يُقرأ main بعد. أضف مفتاح القراءة في MORE ← SETTINGS.")); return; }
   const n = k => k === "ALL" ? rows.length : rows.filter(r => r.disp === k).length;
   sheet("ARCHIVE", rows.length + " branches · " + f.split("/").pop() + " · main " + MAIN_HEAD, top +
@@ -2669,7 +2689,7 @@ function openArchive(){
     $("arLeg").textContent = ARCH_AR[flt]; $("arCount").textContent = L.length + " of " + rows.length + " branches · newest first";
     $("arList").innerHTML = L.length ? L.map(r => `<details class="arrow ar-${r.disp.toLowerCase()}"><summary><span class="arn" dir="ltr">${esc(r.b)}</span><span class="arpill">${esc(r.disp)}</span>
       <span class="armeta" dir="ltr"><span>${esc(r.d)}</span><span>${esc(r.sha.slice(0, 7))}</span><span>${r.m === "Yes" ? "merged" : "not merged"}</span>${r.pr && r.pr !== "—" ? `<span class="arpr">PR ${esc(r.pr)}</span>` : ""}</span>
-      <span class="arwhy" dir="rtl">${esc(archWhyAr(r.why))}</span></summary>
+      <span class="arwhy" dir="rtl">${archWhyHtml(r.why)}</span></summary>
       <dl class="ardl"><dt>Tip SHA</dt><dd>${esc(r.sha)}</dd><dt>Last commit</dt><dd>${esc(r.d)} (UTC)</dd><dt>In main</dt><dd>${r.m === "Yes" ? "Yes · tip reachable from main" : "No · has commits not in main"}</dd>
       <dt>Open PR</dt><dd>${esc(r.pr)}</dd><dt>Proposed tag</dt><dd>${esc(r.tag)} <small>(not created)</small></dd><dt>Reason</dt><dd>${esc(r.why)}</dd></dl></details>`).join("")
       : `<div class="arempty">لا يوجد فرع بهذا الاسم.</div>`; };
