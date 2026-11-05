@@ -90,6 +90,33 @@
 :root .lcomm .lcr.k-need_approval{border-color:rgba(255,138,61,.55)}
 :root .lcomm .lcr.k-need_approval .lck{color:#ff8a3d}
 </style>
+<style>
+/* MORE → ARCHIVE (founder, 2026-11-05): the branch archive plan, read only. Every rule starts with :root. */
+:root .arsafe{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:8px;background:rgba(3,10,20,.5)}
+:root .arsafe b{color:var(--ok,#46f0b0);font-size:13.5px}
+:root .archips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+:root .archip{border:1px solid var(--line);background:rgba(3,10,20,.5);border-radius:10px;padding:7px 4px;font:600 10.5px var(--mono);letter-spacing:.05em;color:var(--cyan2,#7fe3ff);min-width:0}
+:root .archip b{display:block;font:700 20px/1.1 var(--display,inherit);margin-top:2px}
+:root .archip[aria-pressed="true"]{border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
+:root .archip.ar-keep,:root .arrow.ar-keep{--arc:var(--ok,#46f0b0)} :root .archip.ar-keep{color:var(--arc)}
+:root .archip.ar-review,:root .arrow.ar-review{--arc:#ff9f43} :root .archip.ar-review{color:var(--arc)}
+:root .archip.ar-tag-only,:root .arrow.ar-tag-only{--arc:#7aa2ff} :root .archip.ar-tag-only{color:var(--arc)}
+:root .arq{width:100%;box-sizing:border-box;margin-top:8px;background:rgba(3,10,20,.5);border:1px solid var(--line);color:inherit;border-radius:10px;padding:9px 11px;font:13px var(--mono)}
+:root .arleg{font-size:12.5px;color:var(--dim);margin:6px 0 2px}
+:root .arcount{font-size:10.5px;color:var(--dim);margin-bottom:6px}
+:root .arlist{display:grid;gap:6px}
+:root .arrow{border:1px solid var(--line);border-inline-start:4px solid var(--arc);border-radius:8px;background:rgba(3,10,20,.4);min-width:0}
+:root .arrow summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;padding:8px 10px}
+:root .arrow summary::-webkit-details-marker{display:none}
+:root .arrow .arn{font:600 12px var(--mono);overflow-wrap:anywhere;min-width:0;text-align:left}
+:root .arrow .arpill{font:600 9.5px var(--mono);letter-spacing:.06em;color:var(--arc);border:1px solid var(--arc);border-radius:99px;padding:2px 7px;align-self:start;white-space:nowrap}
+:root .arrow .armeta{grid-column:1/-1;font:11px var(--mono);color:var(--dim);display:flex;flex-wrap:wrap;gap:3px 10px;text-align:left}
+:root .arrow .arpr{color:var(--ok,#46f0b0)}
+:root .arrow .arwhy{grid-column:1/-1;font-size:13px}
+:root .ardl{margin:0;padding:0 10px 10px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 10px;font-size:12px}
+:root .ardl dt{color:var(--dim);font:11px var(--mono)} :root .ardl dd{margin:0;font:11.5px var(--mono);overflow-wrap:anywhere;text-align:left;direction:ltr}
+:root .arempty{color:var(--dim);text-align:center;padding:20px 0}
+</style>
 <meta name="theme-color" content="#030a14">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -1364,7 +1391,8 @@ const token = () => (lsGet(K_TOKEN) || "").trim();
 // what the app reads from main (every file is read at the same commit)
 const WANT = p => ["ROOT.md","brain/STATE.md","brain/CONSTITUTION.md","brain/routes/INDEX.md","brain/routes/routes.json","brain/tools/INDEX.md",
   "brain/tools/KNOWN_ISSUES.md","brain/lessons/LESSONS.md","brain/experiences/INDEX.md"].includes(p)
-  || /^brain\/routes\/[a-z0-9-]+\.md$/.test(p) || /^brain\/experiences\/[A-Z]+-\d+\.json$/.test(p) || /^brain\/traces\/.+\.json$/.test(p);
+  || /^brain\/routes\/[a-z0-9-]+\.md$/.test(p) || /^brain\/experiences\/[A-Z]+-\d+\.json$/.test(p) || /^brain\/traces\/.+\.json$/.test(p)
+  || /^brain\/reviews\/[^/]*branch-archive-plan[^/]*\.md$/.test(p);   // MORE → ARCHIVE
 
 const b64utf8 = s => { const bin = atob(String(s).replace(/\s/g, "")); const u = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new TextDecoder("utf-8").decode(u); };
 // etag: the stored ETag; GitHub then answers 304 when nothing changed (a 304 sent with the key does not count against the rate limit)
@@ -2095,10 +2123,11 @@ function drawMore(){
   const rows = [["tests","READ TESTS","3 questions from live main, graded here","M9 4h6M10 4v5l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V4"],
     ["routes","ROUTES",(MODEL ? MODEL.routes.length : 0) + " routes · counters and experiences","M6 18a2.5 2.5 0 1 0 .01 0M18 18a2.5 2.5 0 1 0 .01 0M12 6a2.5 2.5 0 1 0 .01 0M8 16.5l3-8M16 16.5l-3-8"],
     ["rooms","SAVED ROOMS",nRooms + " of 2 saved · ChatGPT and Claude, same way","M4 5h16v11H10l-6 4z"],
+    ["archive","ARCHIVE",(typeof archFile === "function" && archFile() ? parseArchive(MODEL.files[archFile()].text).length + " branches · plan only, nothing deleted" : "branch archive plan · not on main yet"),"M4 7h16v13H4zM3 4h18v3H3zM10 11h4"],
     ["settings","SETTINGS",(token() ? "Read key on this phone" : "No read key yet") + " · main " + (MAIN_HEAD || "not read"),"M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"]];
   $("moreBody").innerHTML = rows.map(r => `<button class="mrow" data-mr="${r[0]}"><svg viewBox="0 0 24 24"><path d="${r[3]}"/></svg><span class="g"><b>${r[1]}</b><span class="s">${r[2]}</span></span>${I(r[0])}</button>`).join("");
   $("moreBody").querySelectorAll("[data-mr]").forEach(b => b.onclick = () => { const k = b.dataset.mr;
-    if(k === "tests") openTests(); if(k === "routes") openDoor("ROUTES"); if(k === "rooms") openRooms(); if(k === "settings") openSettings(); });
+    if(k === "tests") openTests(); if(k === "routes") openDoor("ROUTES"); if(k === "rooms") openRooms(); if(k === "archive") openArchive(); if(k === "settings") openSettings(); });
 }
 function openTests(){
   const T = Object.values(local.tests || {}).sort((a, b) => b.at - a.at).slice(0, 5);
@@ -2608,6 +2637,46 @@ function waveStop(){ WAVE.on = false; if(WAVE.raf) cancelAnimationFrame(WAVE.raf
 { const bm = buildMap; buildMap = function(){ const r = bm.apply(this, arguments); waveLayer(); return r; }; }   // the map is rebuilt (fonts, resize): the layer comes back
 document.addEventListener("visibilitychange", () => document.visibilityState === "visible" ? waveStart() : waveStop());
 waveLayer(); waveStart();
+
+// ================= MORE → ARCHIVE (founder, 2026-11-05): the branch archive plan on main, read only =================
+// Reads brain/reviews/*branch-archive-plan*.md from main (GET only, with the other files) and shows its branches the GPS way:
+// four chips with counts (ALL, KEEP, REVIEW, TAG-ONLY), a search by branch name, newest first, one line per branch with its
+// reason in Arabic; tap for the details. A fixed line on top: it is a plan only. The last filter is kept on the phone.
+var K_ARCH = "eb_gps_archive_filter_v1", ARCH_Q = "";
+var ARCH_AR = {KEEP:"نُبقيه: عليه طلب دمج مفتوح، أو عمل حديث قد نحتاجه.", REVIEW:"يحتاج مراجعة: فيه عمل قديم غير مدموج. لا يُحذف قبل أن يُراجَع.",
+  "TAG-ONLY":"آمن للأرشفة: كل ما فيه موجود أصلًا في main. يكفيه tag ثم يمكن حذفه.", ALL:"كل الفروع في الخطة."};
+function archFile(){ return MODEL ? Object.keys(MODEL.files || {}).filter(p => /^brain\/reviews\/[^/]*branch-archive-plan[^/]*\.md$/.test(p)).sort().pop() || "" : ""; }
+function parseArchive(text){ const rows = [];
+  String(text || "").split("\n").forEach(l => { if(!/^\|\s*`refs\/heads\//.test(l)) return; const c = l.split("|").slice(1, -1).map(x => x.trim());
+    if(c.length < 8) return; const tick = s => s.replace(/^`|`$/g, ""), disp = c[6].replace(/\*/g, "").trim().toUpperCase();
+    rows.push({b:tick(c[0]).replace(/^refs\/heads\//, ""), d:c[1], sha:tick(c[2]), m:/^yes/i.test(c[3]) ? "Yes" : "No", pr:c[4], tag:tick(c[5]), disp:["KEEP", "REVIEW", "TAG-ONLY"].includes(disp) ? disp : "REVIEW", why:c[7]}); });
+  return rows; }
+function archWhyAr(w){ return /Open PR/.test(w) ? "طلب دمج مفتوح " + w.replace(/.*Open PR\s*/, "") : /Reachable from main/.test(w) ? "كل ما فيه موجود في main"
+  : /Historical unmerged/.test(w) ? "عمل قديم غير مدموج: يُراجَع قبل أي حذف" : /Recent unmerged/.test(w) ? "عمل حديث غير مدموج: يُقيَّم" : /hand-off/i.test(w) ? "تسليم نشط للمختبر" : w; }
+function openArchive(){
+  const f = archFile(), rows = f ? parseArchive(MODEL.files[f].text) : [];
+  let flt = lsGet(K_ARCH) || "ALL"; if(!ARCH_AR[flt]) flt = "ALL";
+  const top = `<div class="arsafe"><b>خطة فقط · لم يُنشأ tag ولم يُحذف فرع</b></div>`;
+  if(!rows.length){ sheet("ARCHIVE", "Branch archive plan · main " + (MAIN_HEAD || "not read"), top + AR(MODEL ? "no archive plan on main yet · لا توجد خطة أرشفة على main بعد." : "لم يُقرأ main بعد. أضف مفتاح القراءة في MORE ← SETTINGS.")); return; }
+  const n = k => k === "ALL" ? rows.length : rows.filter(r => r.disp === k).length;
+  sheet("ARCHIVE", rows.length + " branches · " + f.split("/").pop() + " · main " + MAIN_HEAD, top +
+    `<div class="archips">${["ALL", "KEEP", "REVIEW", "TAG-ONLY"].map(k => `<button class="archip ar-${k.toLowerCase()}" data-af="${k}" aria-pressed="${k === flt}">${k}<b>${n(k)}</b></button>`).join("")}</div>
+    <input id="arQ" class="arq" type="search" placeholder="Search branch name…" aria-label="Search branch name" dir="ltr" value="${esc(ARCH_Q)}">
+    <div class="arleg" id="arLeg" dir="auto"></div><div class="arcount mono" id="arCount"></div><div class="arlist" id="arList"></div>
+    <p class="story" style="font-size:12px;color:var(--dim)">المصدر: <span class="mono" dir="ltr">${esc(f)}</span> · GET فقط</p>`);
+  const draw = () => { const L = rows.filter(r => (flt === "ALL" || r.disp === flt) && (!ARCH_Q || r.b.toLowerCase().includes(ARCH_Q))).sort((a, b) => b.d.localeCompare(a.d) || a.b.localeCompare(b.b));
+    $("shB").querySelectorAll("[data-af]").forEach(b => b.setAttribute("aria-pressed", b.dataset.af === flt));
+    $("arLeg").textContent = ARCH_AR[flt]; $("arCount").textContent = L.length + " of " + rows.length + " branches · newest first";
+    $("arList").innerHTML = L.length ? L.map(r => `<details class="arrow ar-${r.disp.toLowerCase()}"><summary><span class="arn" dir="ltr">${esc(r.b)}</span><span class="arpill">${esc(r.disp)}</span>
+      <span class="armeta" dir="ltr"><span>${esc(r.d)}</span><span>${esc(r.sha.slice(0, 7))}</span><span>${r.m === "Yes" ? "merged" : "not merged"}</span>${r.pr && r.pr !== "—" ? `<span class="arpr">PR ${esc(r.pr)}</span>` : ""}</span>
+      <span class="arwhy" dir="rtl">${esc(archWhyAr(r.why))}</span></summary>
+      <dl class="ardl"><dt>Tip SHA</dt><dd>${esc(r.sha)}</dd><dt>Last commit</dt><dd>${esc(r.d)} (UTC)</dd><dt>In main</dt><dd>${r.m === "Yes" ? "Yes · tip reachable from main" : "No · has commits not in main"}</dd>
+      <dt>Open PR</dt><dd>${esc(r.pr)}</dd><dt>Proposed tag</dt><dd>${esc(r.tag)} <small>(not created)</small></dd><dt>Reason</dt><dd>${esc(r.why)}</dd></dl></details>`).join("")
+      : `<div class="arempty">لا يوجد فرع بهذا الاسم.</div>`; };
+  $("shB").querySelectorAll("[data-af]").forEach(b => b.onclick = () => { flt = b.dataset.af; lsSet(K_ARCH, flt); draw(); });
+  $("arQ").addEventListener("input", e => { ARCH_Q = e.target.value.trim().toLowerCase(); draw(); });
+  draw(); }
+INFO.archive = ["ARCHIVE",["ما هو: خطة أرشفة الفروع القديمة كما هي على main، للقراءة فقط.","الأخضر KEEP نُبقيه، والأصفر REVIEW يحتاج مراجعة قبل أي حذف، والأزرق TAG-ONLY كل ما فيه موجود في main.","خطة فقط: لم يُنشأ tag ولم يُحذف فرع. الأرشفة الفعلية تحتاج موافقتك لاحقًا."]];
 </script>
 
 </body>
