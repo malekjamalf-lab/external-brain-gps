@@ -122,6 +122,31 @@
 :root .ardl dt{color:var(--dim);font:11px var(--mono)} :root .ardl dd{margin:0;font:11.5px var(--mono);overflow-wrap:anywhere;text-align:left;direction:ltr}
 :root .arempty{color:var(--dim);text-align:center;padding:20px 0}
 </style>
+<style>
+/* «تواصل» (founder, 2026-11-05): two room boxes, buttons only. Every rule starts with :root to win over the design's later styles. */
+:root #pgTalk .tktopic{display:flex;align-items:center;gap:8px;width:100%;min-width:0;border:1px solid var(--line);background:rgba(3,10,20,.55);color:var(--fg,#e6f3ff);border-radius:12px;padding:11px 12px;margin:0 0 12px;font:inherit;text-align:start}
+:root #pgTalk .tktopic b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
+:root #pgTalk .tktopic .tkchg{flex:none;font-size:12.5px;color:var(--cyan2,#7fe3ff)}
+:root #pgTalk .tkbox{--c:#ff9d4d;border:1.5px solid var(--c);border-radius:16px;background:rgba(10,22,38,.8);padding:14px;margin:0 0 14px;min-width:0}
+:root #pgTalk .tkbox.tk-gpt{--c:#3ddc97}
+:root #pgTalk .tkbox h2{margin:0 0 10px;font-family:inherit;font-weight:700;font-size:18px;line-height:1.2;color:var(--c);display:flex;align-items:center;gap:8px;letter-spacing:0;text-transform:none}
+:root #pgTalk .tkbox h2 i{width:10px;height:10px;border-radius:50%;background:var(--c);display:inline-block;flex:none}
+:root #pgTalk .tkbox .tkturn{font-size:12px;color:#030a14;background:var(--c);border-radius:99px;padding:3px 9px;margin-inline-start:auto;font-weight:700}
+:root #pgTalk .tkbox .nlab{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+:root #pgTalk .tkbox .tknote{display:block;width:100%;min-height:62px;border-radius:12px;border:1px solid var(--line);background:rgba(3,10,20,.6);color:var(--fg,#e6f3ff);font-family:inherit;font-size:15px;line-height:1.5;padding:10px;resize:vertical;box-sizing:border-box}
+:root #pgTalk .tkbox .bigbtn,:root #pgTalk .tkbox .btn2{display:block;width:100%;margin-top:8px;font-size:16px;text-align:center;letter-spacing:0;text-transform:none}
+:root #pgTalk .tkbox .btn2{height:auto;min-height:50px;padding:12px;border-radius:12px;font-family:inherit;font-weight:600}
+:root #pgTalk .tkbox .bigbtn{min-height:54px;font-family:inherit;font-weight:700}
+:root #pgTalk .tkbox .rectag{display:none}   /* the yellow says it: no words on the button */
+:root #pgTalk .tkbox button small{display:block;font-size:11.5px;color:var(--dim);font-weight:400;margin-top:2px}
+:root #pgTalk .tkbox button small:empty{display:none}
+:root #pgTalk .tkbox .tksend.none{opacity:.6;border-color:var(--line);box-shadow:none;color:var(--dim);background:rgba(3,10,20,.6)}
+:root #pgTalk .tktext{margin-top:6px}
+:root #pgTalk .tktext summary{text-align:center;color:var(--dim);font-family:inherit;font-size:13px;letter-spacing:0}
+:root #tkNew{display:block;width:100%;height:auto;min-height:48px;font-family:inherit;font-size:16px;letter-spacing:0;text-transform:none}
+:root .tktops .tkt{text-align:start}
+:root .tktops summary{font-family:inherit;letter-spacing:0;font-size:13px}
+</style>
 <meta name="theme-color" content="#030a14">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -2697,6 +2722,99 @@ function openArchive(){
   $("arQ").addEventListener("input", e => { ARCH_Q = e.target.value.trim().toLowerCase(); draw(); });
   draw(); }
 INFO.archive = ["ARCHIVE",["ما هو: خطة أرشفة الفروع القديمة كما هي على main، للقراءة فقط.","الأخضر KEEP نُبقيه، والأصفر REVIEW يحتاج مراجعة قبل أي حذف، والأزرق TAG-ONLY كل ما فيه موجود في main.","خطة فقط: لم يُنشأ tag ولم يُحذف فرع. الأرشفة الفعلية تحتاج موافقتك لاحقًا."]];
+
+// ================= «تواصل» (founder, 2026-11-05): the Talk page is only for passing messages between the rooms =================
+// One topic at a time; a Claude box and a ChatGPT box, each with an optional note and buttons only: copy and open the room,
+// (Claude) wake Claude on GitHub, and paste the room's reply. The yellow button is the next step; «الدور هنا» marks whose turn it is.
+// The conversation text stays hidden behind «اعرض نص المحادثة». Arabic words; English only for names.
+var TK_ROOM = {claude:"Claude", gpt:"ChatGPT"};
+function tkLast(t){ return [...t.msgs].reverse().find(m => !(m.from === "you" && m.to === "you")); }   // a saved note is not a room message
+// what is new for a room: the latest message from the other room since your last send, and your note (none: null)
+function tkShort(t, to, typed){ let from = 0; for(let i = t.msgs.length - 1; i >= 0; i--){ const m = t.msgs[i]; if(m.from === "you" && m.to !== "you"){ from = i + 1; break; } }
+  const after = t.msgs.slice(from), src = to === "gpt" ? "claude" : "gpt";
+  const r = [...after].reverse().find(m => m.from === src && (m.to === "you" || m.to === to) && !m.pack && !isPackText(m.tx));
+  const note = typed || ([...after].reverse().find(m => m.from === "you" && m.to === "you") || {}).tx || "";
+  if(!r && !note) return null;
+  if(r && r.draft && !note && t.msgs[t.msgs.length - 1] === r) return r.tx;
+  return `GPS THREAD · ${t.title}\n` + (r ? `${NM[r.from]} -> ${NM[r.to]}: ${r.tx}` : "") + (note ? `${r ? "\n\n" : "\n"}MY NOTE: ${note}` : ""); }
+// the whole thread, as the earlier TALK sent it (same rules: no nesting, the note once and last, an old pack's only lines kept once as EARLIER)
+function tkPack(t, to){ const d = [...t.msgs].reverse().find(m => m.draft && m.to === to); if(to === "gpt" && d && t.msgs[t.msgs.length - 1] === d) return d.tx;
+  const skip = m => m.draft || m.pack || isPackText(m.tx), note = [...t.msgs].reverse().find(m => m.from === "you" && m.to === "you" && !skip(m));
+  const lines = t.msgs.filter(m => !skip(m) && m !== note).map(m => `${NM[m.from]} -> ${NM[m.to]}: ${m.tx}`);
+  const old = t.msgs.filter(m => !m.pack && isPackText(m.tx)).pop(), seen = new Set(lines.join("\n").split("\n").map(l => l.trim())), early = [];
+  if(old) old.tx.split("\n").forEach(l => { const x = l.replace(/^[A-Z]+ -> [A-Z]+: (?=GPS THREAD ·)/, "").trim();
+    if(!x || isPackText(x) || /^MY NOTE:/.test(x) || /^[A-Z]+ -> [A-Z]+: sent the thread to /.test(x) || seen.has(x)) return; seen.add(x); early.push(x); });
+  return `GPS THREAD · ${t.title}\n` + (early.length ? "EARLIER (kept from an older copy of this thread):\n" + early.join("\n") + "\n" : "") + lines.join("\n") + (note ? `\n\nMY NOTE: ${note.tx}` : ""); }
+// one tap: copy, then open the saved room (Android: handed to the room's app); the thread keeps a short marker
+function tkSend(text, to, t){ const txt = withTraceAsk(text);
+  if(!copyNow(txt) && navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
+  const url = roomsGet()[to]; let opened = false; const it = url && roomIntent(url, navigator.userAgent);
+  if(it){ try { openIntent(it); opened = true; } catch(e){} }
+  if(url && !opened){ try { opened = !!window.open(url, "_blank", "noopener"); } catch(e){} if(!opened){ try { const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); opened = true; } catch(e){} } }
+  if(isPackText(text)) t.msgs.push({from:"you", to, at:nowHM(), pack:true, tx:"sent the thread to " + TK_ROOM[to], en:true});
+  else t.msgs.push({from:"you", to, at:nowHM(), tx:dropTraceAsk(txt), en:!/[؀-ۿ]/.test(txt.slice(0, 160))});
+  t.last = Date.now(); saveLocal(); setWaiting({room:to, thread:t});
+  toast(url ? "نُسخ · تُفتح غرفة " + TK_ROOM[to] + " · الصق وأرسل" : "نُسخ · احفظ رابط غرفة " + TK_ROOM[to] + " في المزيد ← SAVED ROOMS لتُفتح وحدها");
+  drawTalk(); }
+function tkTopics(){ const tops = THREADS.slice(0, 8), old = THREADS.slice(8);
+  const row = t => `<button class="row tkt" dir="rtl" data-tt="${esc(t.id)}"><span class="g"><b dir="auto">${esc(t.title)}</b><span>${esc(tkTurnText(t))}</span></span></button>`;
+  sheet("المواضيع", "", `<button class="btn2 tknew" id="tkNew" dir="rtl">+ موضوع جديد</button><div class="lst tktops" dir="rtl" style="margin-top:8px">${tops.map(row).join("")}</div>` +
+    (old.length ? `<details class="other tktops" dir="rtl"><summary>▸ قديمة (${old.length})</summary>${old.map(row).join("")}</details>` : ""));
+  $("tkNew").onclick = () => { closeSheet(); thread = threadFor("موضوع " + nowHM()); drawTalk(); };
+  $("shB").querySelectorAll("[data-tt]").forEach(b => b.onclick = () => { thread = THREADS.find(x => x.id === b.dataset.tt) || thread; closeSheet(); drawTalk(); }); }
+// whose turn: the room that should get the next message, or the room whose reply is awaited
+function tkTurn(t){ const l = tkLast(t); if(!l) return {room:"claude", act:"send"}; if(l.from === "you") return {room:l.to === "gpt" ? "gpt" : "claude", act:"paste"};
+  if(l.from === "gpt") return {room:"claude", act:"send"}; return {room:"gpt", act:"send"}; }
+function tkTurnText(t){ const u = tkTurn(t); return u.act === "paste" ? "ننتظر ردّ " + TK_ROOM[u.room] : "الدور على " + TK_ROOM[u.room]; }
+drawTalk = function(){
+  if(!thread || !THREADS.includes(thread)) thread = THREADS[0] || threadFor("عام");
+  const keep = {}, was = $("talkBody").dataset.tk; $("talkBody").querySelectorAll(".tknote").forEach(n => { if(n.value) keep[n.dataset.room] = n.value; });   // a redraw keeps what you were typing
+  const t = thread, u = tkTurn(t); $("talkBack").hidden = true; $("talkTitle").textContent = "تواصل";
+  const box = room => { const turn = u.room === room;
+    const id = room === "claude" ? "Cl" : "Gpt", sendId = room === u.room ? "tRec" : "tOther", noteId = room === u.room ? "tNote" : "tNote2";
+    return `<section class="tkbox tk-${room}" dir="rtl"><h2><i></i>إلى ${TK_ROOM[room]}${turn ? `<span class="tkturn">${u.act === "paste" ? "ننتظر ردّه" : "الدور هنا"}</span>` : ""}</h2>
+      <label class="nlab" for="${noteId}">ملاحظتك (اختياري)</label><textarea id="${noteId}" class="tknote" data-room="${room}" placeholder="ملاحظتك (اختياري)" aria-label="ملاحظتك (اختياري)"></textarea>
+      <button class="bigbtn tksend" id="${sendId}" data-room="${room}"><span class="tl">انسخ وافتح غرفة ${TK_ROOM[room]}</span></button>
+      ${room === "claude" ? `<button class="btn2 tkwake" id="tkWake">أيقظ Claude على GitHub</button>` : ""}
+      <button class="btn2 tkpaste" id="tkPaste${id}" data-room="${room}">الصق ردّ ${TK_ROOM[room]}</button></section>`; };
+  $("talkBody").innerHTML = `<button class="tktopic" id="tkTopic" dir="rtl"><span>📌</span><b dir="auto">${esc(t.title)}</b><span class="tkchg">تغيير الموضوع ▾</span></button>` +
+    box(u.room) + box(u.room === "claude" ? "gpt" : "claude") +
+    `<details class="other tktext" dir="rtl"><summary>▸ اعرض نص المحادثة (${t.msgs.length})</summary><div class="msgs">` +
+      t.msgs.map(m => `<div class="msg ${m.from}${m.draft ? " draft" : ""}"><div class="who"><span class="dir">${NM[m.from]} → ${NM[m.to]}</span>${m.draft ? " · READY REPLY" : ""}<time>${esc(m.at || "")}</time></div><p class="tx${m.en ? " en" : ""}" dir="auto">${esc(m.tx)}</p>${m.att && OPS.some(o => o.id === m.opId) ? `<button class="att" data-opid="${esc(m.opId)}">◆ ${esc(m.att)}</button>` : m.att ? `<span class="att">◆ ${esc(m.att)}</span>` : ""}</div>`).join("") +
+      `</div><div class="btns" style="margin-top:8px"><button class="btn2" id="tAll">أرسل المحادثة كلها إلى ${TK_ROOM[u.room]}</button><button class="btn2" id="tAdd">احفظ ملاحظتي فقط</button></div></details>`;
+  if(was === t.id) $("talkBody").querySelectorAll(".tknote").forEach(n => { if(keep[n.dataset.room]) n.value = keep[n.dataset.room]; });
+  $("talkBody").dataset.tk = t.id;
+  const noteOf = room => (($("talkBody").querySelector(`.tknote[data-room="${room}"]`) || {}).value || "").trim();
+  const keepNote = room => { const v = noteOf(room), n = $("talkBody").querySelector(`.tknote[data-room="${room}"]`);   // saved once, then the box is empty again
+    if(v){ t.msgs.push({from:"you", to:"you", at:nowHM(), tx:v}); t.last = Date.now(); saveLocal(); n.value = ""; } return v; };
+  // one yellow step: the room whose turn it is (send, or paste its reply); a note typed in a box makes that box's send the step
+  const tag = b => { if(!b._rt){ b._rt = document.createElement("span"); b._rt.className = "rectag"; b._rt.textContent = "التالي"; } return b._rt; };
+  const mark = (b, on) => { const r = tag(b); if(on && !r.isConnected) b.prepend(r); if(!on && r.isConnected) r.remove(); };
+  const upd = () => { const typed = ["claude", "gpt"].filter(r => noteOf(r));
+    ["claude", "gpt"].forEach(room => { const b = $("talkBody").querySelector(`.tksend[data-room="${room}"]`), q = $("talkBody").querySelector(`.tkpaste[data-room="${room}"]`);
+      const none = tkShort(t, room, noteOf(room)) === null, turn = u.room === room;
+      b.classList.toggle("none", none); b.setAttribute("aria-disabled", none ? "true" : "false");   // nothing new: the button dims (a tap says why); the words stay the same
+      mark(b, !none && (typed.length ? typed.includes(room) : turn && u.act === "send")); mark(q, !typed.length && turn && u.act === "paste"); }); };
+  $("talkBody").querySelectorAll(".tknote").forEach(n => n.addEventListener("input", upd)); upd();
+  $("talkBody").querySelectorAll(".tksend").forEach(b => b.onclick = () => { const room = b.dataset.room, x = tkShort(t, room, noteOf(room));
+    if(x === null){ upd(); return toast("لا جديد لإرساله · اكتب ملاحظتك أولًا"); } keepNote(room); tkSend(x, room, t); });
+  $("tkWake").onclick = () => { const x = tkShort(t, "claude", noteOf("claude")) || tkPack(t, "claude"), txt = withTraceAsk(x), w = wakeUrl(txt);
+    if(!copyNow(txt) && navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {}); keepNote("claude"); openWake(w.url);
+    if(isPackText(x)) t.msgs.push({from:"you", to:"claude", at:nowHM(), pack:true, tx:"sent the thread to Claude on GitHub", en:true});   // a marker, as the room send (Codex review of #57: no nesting)
+    else t.msgs.push({from:"you", to:"claude", at:nowHM(), tx:"@claude on GitHub: " + dropTraceAsk(txt), en:true});
+    t.last = Date.now(); saveLocal(); setWaiting({room:"claude", thread:t});
+    toast(w.full ? "تُفتح مهمة GitHub جاهزة · اضغط Submit، ويرد Claude هناك" : "النص طويل: نُسخ · الصقه بعد @claude في GitHub ثم Submit"); drawTalk(); };
+  $("talkBody").querySelectorAll(".tkpaste").forEach(b => b.onclick = () => { setWaiting({room:b.dataset.room, thread:t}); openPaste(); });
+  $("tkTopic").onclick = () => tkTopics();
+  $("tAll").onclick = () => { keepNote(u.room); tkSend(tkPack(t, u.room), u.room, t); };
+  $("tAdd").onclick = () => { const a = keepNote(u.room), c = keepNote(u.room === "claude" ? "gpt" : "claude"); if(a || c) drawTalk(); };
+  $("talkBody").querySelectorAll("[data-opid]").forEach(b => b.onclick = () => { go("home"); startReplay(OPS.findIndex(o => o.id === b.dataset.opid)); userPaused = false; playIcon(); });
+  $("talkBody").querySelectorAll(".msg").forEach(m => m.onclick = e => { if(e.target.closest(".att, .i, a, button")) return; m.classList.toggle("open"); });   // one line until tapped
+};
+// Arabic words on the main bar (names stay as they are)
+{ const AR_NAV = {home:"الرئيسية", plan:"الخطة", mission:"المهمة", talk:"تواصل", more:"المزيد"};
+  document.querySelectorAll(".nav button[data-n]").forEach(b => { const n = [...b.childNodes].find(x => x.nodeType === 3 && x.textContent.trim()); if(n && AR_NAV[b.dataset.n]) n.textContent = AR_NAV[b.dataset.n]; }); }
+INFO.talk = ["تواصل",["هنا تنقل الكلام بين الغرف بضغطة.","اكتب ملاحظتك إن أردت، ثم اضغط «انسخ وافتح الغرفة»، والصق وأرسل هناك.","حين ترد الغرفة: انسخ ردها، ثم اضغط «الصق ردّها» هنا.","الزر الأصفر هو الخطوة التالية."]];
 </script>
 
 </body>
