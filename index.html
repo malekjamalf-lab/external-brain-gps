@@ -1737,6 +1737,7 @@ function send(text, o = {}){
     <textarea id="sTxt" aria-label="Text to send" style="min-height:120px;direction:auto">${esc(text)}</textarea>
     <div class="sendgrid"><button class="sendbtn gpt${rec === "gpt" ? " glow" : ""}" data-to="gpt">${rec === "gpt" ? '<span class="rectag">RECOMMENDED</span>' : ""}CHATGPT<small>${R.gpt ? "Smart Engineer room" : "no saved link · copy only"}</small></button>
     <button class="sendbtn cl${rec === "claude" ? " glow" : ""}" data-to="claude">${rec === "claude" ? '<span class="rectag">RECOMMENDED</span>' : ""}CLAUDE<small>${R.claude ? "Claude room" : "no saved link · copy only"}</small></button></div>
+    <button class="btn2" id="sWake" style="width:100%;margin-top:8px">WAKE CLAUDE ON GITHUB<small dir="rtl" style="display:block;font-size:11px;opacity:.75;letter-spacing:0">يفتح مهمة GitHub جاهزة تبدأ بـ <bdi dir="ltr">@claude</bdi> · تضغط أنت <bdi dir="ltr">Submit</bdi></small></button>
     <p class="story" style="font-size:12.5px;color:var(--dim)">يُنسخ النص أولًا، ثم تُفتح الغرفة من رابطها المحفوظ، فتلصقه هناك وترسله. الروابط في MORE ← SAVED ROOMS.</p>`);
   $("shB").querySelectorAll("[data-to]").forEach(b => b.onclick = () => { const to = b.dataset.to, txt = $("sTxt").value;
     const copied = copyNow(txt); if(!copied && navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
@@ -1753,7 +1754,25 @@ function send(text, o = {}){
     const RN = to === "gpt" ? "ChatGPT" : "Claude";
     toast(url ? "نُسخ · تُفتح غرفة " + RN + " · الصق وأرسل، ثم الصق ردها بزر PASTE" : "نُسخ · احفظ رابط غرفة " + RN + " في MORE ← SAVED ROOMS لتُفتح وحدها");
     if(!$("pgTalk").hidden) drawTalk(); });
+  $("sWake").onclick = () => { const txt = $("sTxt").value.trim(), w = wakeUrl(txt);
+    if(!copyNow(txt) && navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
+    openWake(w.url);   // one navigation only: window.open with noopener returns null even when it worked (Codex review of #51)
+    const th = o.thread || threadFor(o.topic || o.title || "General", o.about);
+    if(isPackText(text) || isPackText(txt)){ const ed = packEdits(text, txt);   // as the room send: your edits to a thread pack are kept (Codex review of #51)
+      if(ed) th.msgs.push({from:"you",to:"claude",at:nowHM(),tx:ed,en:!/[؀-ۿ]/.test(ed.slice(0,160))});
+      th.msgs.push({from:"you",to:"claude",at:nowHM(),pack:true,tx:"sent the thread to Claude on GitHub",en:true}); }
+    else th.msgs.push({from:"you",to:"claude",at:nowHM(),tx:"@claude on GitHub: " + dropTraceAsk(txt),en:true});
+    saveLocal(); setWaiting({room:"claude", thread:th}); closeSheet(); closeDoor();
+    toast(w.full ? "تُفتح مهمة GitHub جاهزة · اضغط Submit، ويرد Claude هناك" : "النص طويل: نُسخ · الصقه بعد @claude في GitHub ثم Submit");
+    if(!$("pgTalk").hidden) drawTalk(); };
 }
+// the issue page is opened with the text in its address; a text too long for an address is copied instead and pasted after @claude
+const WAKE_NEW = "https://github.com/" + GH.repo + "/issues/new", WAKE_MAX = 7000;
+function openWake(url){ try { const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); } catch(e){} }
+function wakeUrl(txt){ const first = (String(txt || "").split("\n").find(l => l.trim()) || "task").trim();
+  const q = (title, body) => WAKE_NEW + "?title=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(body);
+  const title = "GPS: " + Array.from(first).slice(0, 70).join(""), full = q(title, "@claude " + txt);
+  return full.length <= WAKE_MAX ? {url:full, full:true} : {url:q(title, "@claude\n\n"), full:false}; }
 // Android: a link opened from the installed app (standalone) goes to a Custom Tab, which does not hand over to the room's app.
 // An intent URL does, and falls back to the same https link when the app is missing. Other platforms keep window.open.
 const ROOM_PKG = [[/^(chatgpt\.com|chat\.openai\.com)$/, "com.openai.chatgpt"], [/^claude\.ai$/, "com.anthropic.claude"]];
