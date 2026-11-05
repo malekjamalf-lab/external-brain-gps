@@ -2553,6 +2553,42 @@ function workTag(run, tx, ty){
 { const box = document.createElement("section"); box.className = "lcomm"; box.id = "lcomm"; box.setAttribute("aria-label", "Live commentary"); $("pgHome").appendChild(box); }
 INFO.comm = ["LIVE COMMENTARY",["ما هو: تعليق حي على عمل المختبر الآن: بداية كل مهمة، ونبضة كل دقيقتين في العمل الطويل، ونهايتها، والأحدث أولًا.","المس سطرًا لترى التفاصيل: ما عُمل، ولماذا، والعوائق، وأين حُفظ، وما التالي.","زر VOICE يشغّل الصوت العربي: يُقرأ كل حدث جديد مرة واحدة. يبقى اختيارك على هاتفك.","حين يحتاج المختبر موافقتك يصير الجرس أصفر، ويظهر زر OPEN THE LAB ROOM."]];
 lcOn = lsGet(LC_VOICE) === "1"; lcDraw(true);
+
+// ================= a living background (founder, 2026-11-05): visual only =================
+// The background dot grid and the faint circuit lines carry a slow, soft light wave from right to left that rises and falls
+// gently, like breathing. Background layer only: it sits under the roads, buildings, cars and marks, takes no taps, and is
+// much fainter than them. One cheap layer: a lit copy of the dots and lines under one moving mask, updated at most 30 times a
+// second (one attribute pair per update), paused while the app is hidden, and static under prefers-reduced-motion.
+var WAVE = {on:false, last:0, t0:0, raf:0, frames:0};
+const WAVE_MS = 30, WAVE_SWEEP = 16000, WAVE_BREATH = 6000;
+function waveLayer(){
+  const dots = svg.querySelector('rect[fill="url(#dots)"]'); if(!dots || svg.querySelector("#waveDots")) return;
+  const defs = svg.querySelector("defs");
+  defs.insertAdjacentHTML("beforeend", `<pattern id="dotsLit" width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#3a9bd6"/></pattern>
+    <linearGradient id="waveG" x1="0" y1="0" x2="1" y2="0" gradientTransform="rotate(14 .5 .5)"><stop offset="0" stop-color="#000"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
+    <mask id="waveM" maskUnits="userSpaceOnUse" x="-400" y="-400" width="${WW + 800}" height="${WH + 800}"><rect id="waveR" x="${WW}" y="-400" width="${Math.round(WW * 0.55)}" height="${WH + 800}" fill="url(#waveG)"/></mask>`);
+  const lit = el("rect", {id:"waveDots", x:-400, y:-400, width:WW + 800, height:WH + 800, fill:"url(#dotsLit)", mask:"url(#waveM)", opacity:reduce ? ".12" : ".3", "pointer-events":"none"});
+  dots.after(lit);
+  const deco = lit.nextElementSibling;   // the faint circuit lines drawn right after the dots
+  if(deco && deco.tagName === "g" && deco.getAttribute("stroke") === "#0e3050"){
+    const lines = deco.cloneNode(true); lines.id = "waveLines"; lines.setAttribute("stroke", "#1f6ea3"); lines.setAttribute("mask", "url(#waveM)"); lines.setAttribute("opacity", reduce ? ".15" : ".4"); lines.setAttribute("pointer-events", "none");
+    lines.querySelectorAll("circle").forEach(c => c.setAttribute("fill", "#1f6ea3")); deco.after(lines); }
+  if(reduce){ const r = $("waveR"); if(r){ r.setAttribute("x", String(Math.round(WW * 0.25))); } }   // reduced motion: one still, faint glow
+}
+function waveStep(now){ WAVE.raf = 0; if(!WAVE.on) return;
+  if(now - WAVE.last >= WAVE_MS){ WAVE.last = now; WAVE.frames++;
+    const r = $("waveR"), lit = $("waveDots"), lines = $("waveLines");
+    if(r){ const t = (now - WAVE.t0) % WAVE_SWEEP / WAVE_SWEEP, band = WW * 0.55, x = WW + band * 0.2 - t * (WW + band * 1.4);   // right to left
+      const y = -400 + Math.sin(now / 9000 * 2 * Math.PI) * 26;   // rising and falling gently
+      r.setAttribute("x", x.toFixed(1)); r.setAttribute("y", y.toFixed(1)); }
+    const b = 0.62 + 0.38 * Math.sin(now / WAVE_BREATH * 2 * Math.PI);   // breathing
+    if(lit) lit.setAttribute("opacity", (0.3 * b).toFixed(3)); if(lines) lines.setAttribute("opacity", (0.4 * b).toFixed(3)); }
+  WAVE.raf = requestAnimationFrame(waveStep); }
+function waveStart(){ if(reduce || WAVE.on || document.visibilityState !== "visible") return; WAVE.on = true; if(!WAVE.t0) WAVE.t0 = performance.now(); WAVE.raf = requestAnimationFrame(waveStep); }
+function waveStop(){ WAVE.on = false; if(WAVE.raf) cancelAnimationFrame(WAVE.raf); WAVE.raf = 0; }
+{ const bm = buildMap; buildMap = function(){ const r = bm.apply(this, arguments); waveLayer(); return r; }; }   // the map is rebuilt (fonts, resize): the layer comes back
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" ? waveStart() : waveStop());
+waveLayer(); waveStart();
 </script>
 
 </body>
