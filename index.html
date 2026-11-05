@@ -1414,13 +1414,21 @@ function traceToOp(tr, o = {}){
       `\nRESULT: ${res || "?"}\nVERIFIED: ${verified ? "yes · " + (tr.verified_by || "") : "no"}`};
 }
 // pick the trace JSON out of a pasted reply (fenced or bare)
-function findTraceJSON(text){
-  const t = String(text || ""); const cands = [];
-  (t.match(/```[a-z-]*\s*\n([\s\S]*?)```/gi) || []).forEach(b => cands.push(b.replace(/^```[a-z-]*\s*\n/i, "").replace(/```$/, "")));
-  const i = t.indexOf("{"), j = t.lastIndexOf("}"); if(i >= 0 && j > i) cands.push(t.slice(i, j + 1));
-  for(const c of cands){ if(!/eb-trace\/v1/.test(c)) continue; try { const x = JSON.parse(c); if(x && x.schema === "eb-trace/v1" && Array.isArray(x.steps)) return x; } catch(e){} }
-  return null;
-}
+// the end of the balanced JSON object that starts at i (braces matched outside strings, escapes handled); -1 = none
+function braceEnd(t, i){ let d = 0, inS = false, esc = false;
+  for(let j = i; j < t.length; j++){ const c = t[j];
+    if(inS){ if(esc) esc = false; else if(c === "\\") esc = true; else if(c === '"') inS = false; continue; }
+    if(c === '"') inS = true; else if(c === "{") d++; else if(c === "}" && --d === 0) return j; }
+  return -1; }
+// every eb-trace/v1 in a pasted reply, fenced or not, any number; a span that is not a valid trace is searched inside,
+// so stray braces around a trace or a broken block never hide the valid ones
+function findTraces(text){ const t = String(text || ""), out = [];
+  for(let i = 0; i < t.length; i++){ if(t[i] !== "{") continue; const j = braceEnd(t, i); if(j < 0) continue;
+    const c = t.slice(i, j + 1); if(!/eb-trace\/v1/.test(c)){ i = j; continue; }   // nothing inside can be a trace either
+    let x = null; try { x = JSON.parse(c); } catch(e){}
+    if(x && x.schema === "eb-trace/v1" && Array.isArray(x.steps) && x.steps.every(st => st && typeof st === "object" && !Array.isArray(st))){ out.push(x); i = j; } }
+  return out; }
+function findTraceJSON(text){ return findTraces(text)[0] || null; }
 
 let MODEL = null;
 function buildModel(c){
@@ -1970,12 +1978,15 @@ async function readReply(v){
     const msg = res.verdict === "UNKNOWN_TEST" ? "exam answers · test " + P.TEST_ID + " was not made on this phone" : `exam answers · ${res.verdict === "PASS" ? "✓ PASS" : "✗ " + res.verdict} ${res.score != null ? res.score + " of " + res.total : ""}${res.routeOk === false ? " · first line is not ROUTE: GITHUB" : ""}`;
     th.msgs.push({from, to:"you", at:nowHM(), tx:msg, en:true}); setWaiting(null); saveLocal(); thread = th; go("talk");
     return toast(res.verdict === "PASS" ? "ورقة امتحان · ✓ نجح " + res.score + " من " + res.total : "ورقة امتحان · " + res.verdict + (res.score != null ? " · " + res.score + " من " + res.total : "")); }
-  const TR = findTraceJSON(v);
-  if(TR){ const op = traceToOp(TR, {pasted:true, date:new Date().toISOString().slice(0, 10)});
-    local.pasted = (local.pasted || []).filter(x => !(x.task_id === TR.task_id && x.room === TR.room)).concat([TR]).slice(-12);
-    th.msgs.push({from:ROOM_OF[TR.room] || from, to:"you", at:nowHM(), tx:"trip report · " + TR.task_id + " · " + (TR.result || "?"), att:"trip report · drawn on the map", opId:op.id, en:true});
+  // every trace in the reply, fenced or not; a trace that cannot be drawn is skipped on its own, and only drawn ones are counted
+  const TRS = findTraces(v).filter(TR => { try { traceToOp(TR, {pasted:true}); return true; } catch(e){ return false; } });
+  if(TRS.length){ let op = null;
+    TRS.forEach(TR => { op = traceToOp(TR, {pasted:true, date:new Date().toISOString().slice(0, 10)});
+      local.pasted = (local.pasted || []).filter(x => !(x.task_id === TR.task_id && x.room === TR.room)).concat([TR]);
+      th.msgs.push({from:ROOM_OF[TR.room] || from, to:"you", at:nowHM(), tx:"trip report · " + TR.task_id + " · " + (TR.result || "?"), att:"trip report · drawn on the map", opId:op.id, en:true}); });
+    local.pasted = local.pasted.slice(-Math.max(12, TRS.length));   // the phone keeps the last 12 pasted traces, and never fewer than this paste brought
     setWaiting(null); saveLocal(); applyModel(); go("home"); startReplay(OPS.findIndex(o => o.id === op.id)); userPaused = false; playIcon();
-    return toast("تقرير رحلة · رُسم على الخريطة · REPORTED حتى يفحصه المختبر ويصل إلى main"); }
+    return toast(TRS.length + (TRS.length > 1 ? " traces drawn" : " trace drawn") + " · " + (TRS.length > 1 ? "رُسمت " + TRS.length + " رحلات" : "رُسمت رحلة") + " على الخريطة · REPORTED حتى يفحصها المختبر وتصل إلى main"); }
   th.msgs.push({from, to:"you", at:nowHM(), tx:v, en:!/[؀-ۿ]/.test(String(v).slice(0, 160))}); setWaiting(null); saveLocal(); thread = th; go("talk");
   toast((/```\s*eb-trace\s*\n/i.test(v) ? "صيغة أثر قديمة · اطلب من الغرفة eb-trace/v1 · " : "") + "رد عادي" + (route ? " · ROUTE: " + route : "") + " · دخل الخيط «" + th.title + "»");
 }
