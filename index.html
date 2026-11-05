@@ -146,6 +146,8 @@
 :root #tkNew{display:block;width:100%;height:auto;min-height:48px;font-family:inherit;font-size:16px;letter-spacing:0;text-transform:none}
 :root .tktops .tkt{text-align:start}
 :root .tktops summary{font-family:inherit;letter-spacing:0;font-size:13px}
+:root #shB .tkat{display:block;width:100%;height:auto;min-height:50px;margin-top:8px;font-family:inherit;font-size:16px;letter-spacing:0;text-transform:none}
+:root #shB .tkat .rectag{display:none}   /* the yellow says it */
 </style>
 <meta name="theme-color" content="#030a14">
 <link rel="manifest" href="manifest.webmanifest">
@@ -2815,6 +2817,25 @@ drawTalk = function(){
 { const AR_NAV = {home:"الرئيسية", plan:"الخطة", mission:"المهمة", talk:"تواصل", more:"المزيد"};
   document.querySelectorAll(".nav button[data-n]").forEach(b => { const n = [...b.childNodes].find(x => x.nodeType === 3 && x.textContent.trim()); if(n && AR_NAV[b.dataset.n]) n.textContent = AR_NAV[b.dataset.n]; }); }
 INFO.talk = ["تواصل",["هنا تنقل الكلام بين الغرف بضغطة.","اكتب ملاحظتك إن أردت، ثم اضغط «انسخ وافتح الغرفة»، والصق وأرسل هناك.","حين ترد الغرفة: انسخ ردها، ثم اضغط «الصق ردّها» هنا.","الزر الأصفر هو الخطوة التالية."]];
+// «قُرئ الرد» (the founder's live test of «تواصل», 2026-11-05): after a pasted reply's traces are drawn, the reply goes on to the OTHER room
+// (a reply from Claude goes to ChatGPT for review, a reply from ChatGPT to Claude), in one tap with no dialog, in Arabic words
+// the room that replied, kept before readReply clears the wait (Codex review of #58)
+var TK_FROM = new Map();
+{ const rr = readReply; readReply = function(v){ if(waiting) TK_FROM.set(String(v), waiting.room); else TK_FROM.delete(String(v)); return rr.apply(this, arguments); }; }
+// the waited-for room, when the reply's traces include it (a mixed reply from ChatGPT stays ChatGPT's); a wait the traces contradict
+// (e.g. still waiting for Claude while a ChatGPT reply is pasted) gives way to the traces' one room; else the reply's own guess
+function tkSender(v, th){ const k = String(v), w = TK_FROM.has(k) ? TK_FROM.get(k) : null; TK_FROM.delete(k);
+  const rs = [...new Set((typeof findTraces === "function" ? findTraces(v) : []).map(t => ROOM_OF[t.room]).filter(Boolean))];
+  if(w && (!rs.length || rs.includes(w))) return w;
+  return rs.length === 1 ? rs[0] : w || (/claude/i.test(k.slice(0, 200)) ? "claude" : "gpt"); }
+afterTrace = function(v, n, th){ const src = tkSender(v, th);   // read (and dropped) first, also when the offer does not show
+  if(!$("sheet").hidden || !$("door").hidden || $("pgHome").hidden) return;   // only on the map with nothing open (Codex review of #55)
+  const rec = src === "claude" ? "gpt" : "claude", other = rec === "gpt" ? "claude" : "gpt";
+  const id = r => r === "claude" ? "atCl" : "atGpt";
+  sheet("قُرئ الرد", "رُسم على الخريطة", `<div dir="rtl"><button class="bigbtn tkat" id="${id(rec)}"><span class="rectag">التالي</span>أرسل الرد إلى ${TK_ROOM[rec]}</button>` +
+    `<button class="btn2 tkat" id="${id(other)}">أرسل الرد إلى ${TK_ROOM[other]}</button><button class="btn2 tkat" id="atNo">الخريطة فقط</button></div>`);
+  const fw = to => { closeSheet(); tkSend(`Reply from ${TK_ROOM[src]} (trace drawn in GPS):\n` + v, to, th || threadFor("عام")); };
+  $("atCl").onclick = () => fw("claude"); $("atGpt").onclick = () => fw("gpt"); $("atNo").onclick = () => closeSheet(); };
 </script>
 
 </body>
